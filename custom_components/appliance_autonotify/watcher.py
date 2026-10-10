@@ -25,6 +25,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import PowerConverter
 
 from .const import (
+    ANDROID_CHANNEL,
     APPLIANCE_TYPES,
     CAVITY_TEMPERATURE_KEY,
     CONF_CUSTOM_TARGET,
@@ -65,6 +66,7 @@ from .const import (
     PREHEAT_PHASE,
     PREHEATED_MESSAGE,
     PROGRAM_KEYS,
+    PROGRESS_CHIP,
     PROGRESS_FINAL,
     PROGRESS_FINAL_STEP,
     PROGRESS_KEY,
@@ -245,6 +247,11 @@ class ApplianceWatcher:
             "mobile_push_notification_tag": self.tag,
             "live_update": True,
             "notification_icon": self.icon,
+            # Android only, iOS ignores them: a channel of its own so the start sounds, and kept when tapped as
+            # a Live Activity is, since otherwise the next update brings it back as a new, sounding, notification
+            "channel": ANDROID_CHANNEL,
+            "importance": "high",
+            "sticky": True,
         } | self._tap_data()
         progress = self._progress()
         if progress is not None:
@@ -255,6 +262,10 @@ class ApplianceWatcher:
         if finish_time is not None:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
+        elif progress is not None:
+            # the Android status bar chip shows this in place of the time left, so only with no time to show, and
+            # short, since a longer text leaves the chip with only its icon
+            data["critical_text"] = PROGRESS_CHIP.format(progress=progress)
         return data
 
     async def _supernotify(

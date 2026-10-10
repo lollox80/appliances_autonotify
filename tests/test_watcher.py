@@ -13,9 +13,12 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
-from custom_components.appliance_autonotify.const import DOMAIN
+from custom_components.appliance_autonotify.const import ANDROID_CHANNEL, DOMAIN
 
 from .conftest import DISHWASHER_PROGRAMS, add_appliance, mock_dashboards, mock_supernotify, setup_watcher
+
+# the Android only fields that every Live Activity notification carries
+ANDROID = {"channel": ANDROID_CHANNEL, "importance": "high", "sticky": True}
 
 
 async def set_state(hass: HomeAssistant, entity_id: str, state: str) -> None:
@@ -35,7 +38,12 @@ async def test_cycle_with_supernotify(hass: HomeAssistant) -> None:
     assert calls[0].data == {
         "message": "Dishwasher started",
         "title": "Dishwasher",
-        "extra_data": {"mobile_push_notification_tag": tag, "live_update": True, "notification_icon": "mdi:dishwasher"},
+        "extra_data": {
+            "mobile_push_notification_tag": tag,
+            "live_update": True,
+            "notification_icon": "mdi:dishwasher",
+            **ANDROID,
+        },
     }
 
     # paused and resumed is the same cycle
@@ -97,6 +105,7 @@ async def test_progress_updates_mobile_only(hass: HomeAssistant) -> None:
             "mobile_push_notification_tag": tag,
             "live_update": True,
             "notification_icon": "mdi:dishwasher",
+            **ANDROID,
             "progress": 12,
             "progress_max": 100,
             "chronometer": True,
@@ -139,8 +148,11 @@ async def test_progress_notified_when_asked_for(hass: HomeAssistant) -> None:
             "mobile_push_notification_tag": tag,
             "live_update": True,
             "notification_icon": "mdi:dishwasher",
+            **ANDROID,
             "progress": 10,
             "progress_max": 100,
+            # with no finish time, the Android status bar chip has the progress to show
+            "critical_text": "10%",
         },
     }
 
@@ -258,6 +270,7 @@ async def test_start_and_end_notifications_switched_off(hass: HomeAssistant) -> 
             "mobile_push_notification_tag": tag,
             "live_update": True,
             "notification_icon": "mdi:dishwasher",
+            **ANDROID,
             "silent": True,
             "alert_once": True,
         },
@@ -362,6 +375,7 @@ async def test_oven_progress_is_its_temperature_until_up_to_heat(hass: HomeAssis
         "mobile_push_notification_tag": f"appliance_{entry.entry_id}",
         "live_update": True,
         "notification_icon": "mdi:stove",
+        **ANDROID,
         "silent": True,
         "alert_once": True,
     }
@@ -737,7 +751,12 @@ async def test_power_monitored_cycle(hass: HomeAssistant, freezer) -> None:
     assert calls[0].data == {
         "message": "Washer started",
         "title": "Washer",
-        "extra_data": {"mobile_push_notification_tag": tag, "live_update": True, "notification_icon": "mdi:washing-machine"},
+        "extra_data": {
+            "mobile_push_notification_tag": tag,
+            "live_update": True,
+            "notification_icon": "mdi:washing-machine",
+            **ANDROID,
+        },
     }
 
     # a drop out shorter than the grace period is the same cycle

@@ -24,7 +24,9 @@ in English only. Any other appliance can be added by hand if it has a power moni
 - An appliance set up with the Home Connect integration, or one with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification
-- Home Assistant app installed on an Apple mobile device, minimum iOS/iPadOS 17.2
+- Home Assistant app installed on an Apple mobile device, minimum iOS 17.2, or on an Android one, where a
+  [Live Update](https://companion.home-assistant.io/docs/notifications/live-activities) needs Android 16 or later,
+  and earlier versions show an ordinary notification with a progress bar
 
 Without Supernotify, it only sends a start and an end notification, to every phone with the Home Assistant app
 unless you choose other notify entities.
@@ -115,6 +117,13 @@ coffee maker, cleaning robot or air conditioner. A power monitored appliance has
 used instead, as in "Washer" or "Kettle".
 
 ## Known Limits
+
+- On a Samsung phone, the status bar chip, the Now Bar and the appliance's colour only show with the developer option
+  *Live notifications for all apps* turned on. See [Android and iOS](docs/mobile_platforms.md) for everything each
+  platform shows
+- On Android the notifications go in their own *Appliances* channel, made with sound the first time, since a Live
+  Update in the app's usual channel is silent. Its sound can be changed in the phone's settings for the Home
+  Assistant app, and is kept from then on
 
 - Pre-heating is the only phase of a cycle there is to tell of, since Home Connect reports none for a dishwasher or washer, such as pre-wash or rinse
 
