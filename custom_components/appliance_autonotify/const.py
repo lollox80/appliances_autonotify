@@ -142,6 +142,19 @@ PHASES_NOTIFIED: Final[tuple[str, ...]] = (TYPE_OVEN,)
 # matched against the device name where the type isn't known, first hit wins
 ICONS: Final[dict[str, str]] = {
     "dishwasher": "mdi:dishwasher",
+    # Italian names
+    "lavastoviglie": "mdi:dishwasher",
+    "lavasciuga": "mdi:washing-machine",
+    "lavatrice": "mdi:washing-machine",
+    "asciugatrice": "mdi:tumble-dryer",
+    "microonde": "mdi:microwave",
+    "forno": "mdi:stove",
+    "caffè": "mdi:coffee-maker",
+    "caffe": "mdi:coffee-maker",
+    "cappa": "mdi:fan",
+    "piano cottura": "mdi:pot-steam",
+    "aspirapolvere": "mdi:robot-vacuum",
+    "bollitore": "mdi:kettle",
     "dryer": "mdi:tumble-dryer",
     "wash": "mdi:washing-machine",
     "oven": "mdi:stove",

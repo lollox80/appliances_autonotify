@@ -717,10 +717,10 @@ async def test_setup_retried_when_appliance_missing(hass: HomeAssistant) -> None
     assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
-async def setup_power_watcher(hass: HomeAssistant, **options: float) -> MockConfigEntry:
+async def setup_power_watcher(hass: HomeAssistant, title: str = "Washer", **options: float) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title="Washer",
+        title=title,
         unique_id="sensor.washer_power",
         data={"type": "power"},
         options={"power_entity": "sensor.washer_power", **options},
@@ -819,3 +819,11 @@ async def test_power_threshold_grace_and_units(hass: HomeAssistant, freezer) -> 
     freezer.tick(300)
     await pass_time(hass, 0)
     assert len(calls) == 3
+
+
+async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, "Lavastoviglie cucina")
+    await set_state(hass, "sensor.washer_power", "1800")
+    assert calls[0].data["extra_data"]["notification_icon"] == "mdi:dishwasher"
