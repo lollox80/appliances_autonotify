@@ -44,11 +44,6 @@ docs=[
     "bs4" # llmsgen doc hook
 ]
 
-[tool.uv]
-override-dependencies = [
-    "homeassistant==2026.9.3",
-    "homeassistant-stubs==2026.9.3",
-]
 
 [tool.ruff]
 line-length = 128
