@@ -79,12 +79,7 @@ async def test_cycle_with_supernotify(hass: HomeAssistant) -> None:
         "delivery": ["mobile_push", "phones"],
         "extra_data": {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True},
     }
-    assert calls[2].data == {
-        "message": "Dishwasher is finished",
-        "title": "Dishwasher",
-        "force_resend": True,
-        "extra_data": {"notification_icon": "mdi:dishwasher"},
-    }
+    assert calls[2].data == ended("Dishwasher", entry.entry_id, "mdi:dishwasher", force_resend=True)
 
     # finished only once
     await set_state(hass, appliance.cycle, "inactive")
@@ -602,12 +597,7 @@ async def test_cycle_ends_without_finished_state(hass: HomeAssistant) -> None:
     await set_state(hass, appliance.cycle, "inactive")
     assert len(calls) == 3
     assert calls[1].data["extra_data"]["mobile_push_clear_notification"] is True
-    assert calls[2].data == {
-        "message": "Oven is finished",
-        "title": "Oven",
-        "force_resend": True,
-        "extra_data": {"notification_icon": "mdi:stove"},
-    }
+    assert calls[2].data == ended("Oven", entry.entry_id, "mdi:stove", force_resend=True)
 
     await set_state(hass, appliance.cycle, "ready")
     await pass_time(hass, CYCLE_SETTLE)
@@ -846,12 +836,7 @@ async def test_power_monitored_cycle(hass: HomeAssistant, freezer) -> None:
     await pass_time(hass, 0)
     assert len(calls) == 3
     assert calls[1].data["extra_data"] == {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True}
-    assert calls[2].data == {
-        "message": "Washer is finished",
-        "title": "Washer",
-        "force_resend": True,
-        "extra_data": {"notification_icon": "mdi:washing-machine"},
-    }
+    assert calls[2].data == ended("Washer", entry.entry_id, "mdi:washing-machine", force_resend=True)
 
     # ended only once
     await set_state(hass, "sensor.washer_power", "0")
@@ -1041,7 +1026,7 @@ async def test_switch_off_once_finished(hass: HomeAssistant, freezer, caplog) ->
     hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
     entry = await setup_power_watcher(hass, switch_entity="switch.washer_plug")
     await finish_power_cycle(hass, freezer)
-    assert calls[2].data == ended("Washer", entry.entry_id, "mdi:washing-machine", switch=True)
+    assert calls[2].data == ended("Washer", entry.entry_id, "mdi:washing-machine", switch=True, force_resend=True)
 
     await press(hass, f"APPLIANCE_SWITCH_OFF_{entry.entry_id}")
     assert [c.data for c in switched] == [{"entity_id": "switch.washer_plug"}]

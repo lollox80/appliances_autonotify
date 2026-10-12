@@ -229,7 +229,8 @@ class ApplianceWatcher:
                 extra_data={"mobile_push_notification_tag": self.tag, "mobile_push_clear_notification": True},
             )
             if notify:
-                await self._tell_end()
+                # the same end message as the last cycle would otherwise be dropped as a duplicate
+                await self._tell_end(resend=True)
                 self._reminders_sent = 0
                 if self.reminder:
                     self._remind_in(self.reminder)
@@ -297,9 +298,6 @@ class ApplianceWatcher:
                 )
             except HomeAssistantError:
                 _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
-                await self._supernotify(
-                    message, title, resend=True, extra_data={"notification_icon": self.icon} | self._tap_data()
-                )
 
     def _text(self, key: str, default: str) -> str:
         return str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
