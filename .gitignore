@@ -14,3 +14,6 @@ junit/
 .agents
 site/
 .cache/
+# copied from README.md and CHANGELOG.md by mkdocs-homepage-copier
+docs/index.md
+docs/changelog.md
