@@ -33,6 +33,7 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
     CONF_NOTIFY_PROGRESS,
@@ -45,6 +46,7 @@ from .const import (
     CONF_THRESHOLD,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
+    DEFAULT_MIN_DURATION,
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
@@ -157,6 +159,9 @@ def power_schema(with_name: bool) -> vol.Schema:
         NumberSelectorConfig(min=0, step="any", mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfPower.WATT)
     )
     fields[vol.Required(CONF_GRACE_PERIOD, default=DEFAULT_GRACE_PERIOD)] = NumberSelector(
+        NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS)
+    )
+    fields[vol.Required(CONF_MIN_DURATION, default=DEFAULT_MIN_DURATION)] = NumberSelector(
         NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS)
     )
     return vol.Schema(fields)

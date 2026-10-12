@@ -36,10 +36,13 @@ TYPE_POWER: Final[str] = "power"
 CONF_POWER_ENTITY: Final[str] = "power_entity"
 CONF_THRESHOLD: Final[str] = "threshold"
 CONF_GRACE_PERIOD: Final[str] = "grace_period"
+CONF_MIN_DURATION: Final[str] = "min_duration"
 # watts above which the appliance is running
 DEFAULT_THRESHOLD: Final[float] = 1
 # seconds at or below the threshold before the cycle is over, so short drop outs are ignored
 DEFAULT_GRACE_PERIOD: Final[float] = 60
+# seconds above the threshold before it counts as a cycle, so a door opened or a button pressed isn't one
+DEFAULT_MIN_DURATION: Final[float] = 0
 
 # English only for the MVP
 DISCOVERY_TITLE: Final[str] = "Automatic discovery"
