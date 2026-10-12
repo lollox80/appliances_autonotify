@@ -230,6 +230,7 @@ async def test_settings_without_supernotify(hass: HomeAssistant) -> None:
     assert list(sections) == ["start", "end", "notify"]
     assert all(s.options == {"collapsed": True} for s in sections.values())
     assert list(sections["notify"].schema.schema) == ["targets"]
+    assert list(sections["end"].schema.schema) == ["end_title", "end_message"]
     # titles and messages are shown as they'll be sent, with no template to work out
     assert suggested(result) == {
         "start_title": "Dishwasher",
@@ -282,6 +283,9 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
     notify = next(v for k, v in result["data_schema"].schema.items() if k == "notify").schema.schema
     # the notify entity list is only for use without Supernotify
     assert list(notify) == ["target", "custom_target", "deliveries"]
+    # reminders and buttons on the end need Supernotify, so are only offered with it
+    end = next(v for k, v in result["data_schema"].schema.items() if k == "end").schema.schema
+    assert list(end) == ["end_title", "end_message", "reminder"]
     assert notify["deliveries"].config["options"] == ["chimes", "email", "mobile_push", "phones"]
 
     settings = {"target": {"entity_id": ["person.joe"]}, "custom_target": ["joe@example.com"], "deliveries": ["phones"]}

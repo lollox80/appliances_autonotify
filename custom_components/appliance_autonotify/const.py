@@ -37,6 +37,8 @@ CONF_POWER_ENTITY: Final[str] = "power_entity"
 CONF_THRESHOLD: Final[str] = "threshold"
 CONF_GRACE_PERIOD: Final[str] = "grace_period"
 CONF_MIN_DURATION: Final[str] = "min_duration"
+# the smart plug the appliance is on, offered as a button to switch off once it has finished
+CONF_SWITCH_ENTITY: Final[str] = "switch_entity"
 # watts above which the appliance is running
 DEFAULT_THRESHOLD: Final[float] = 1
 # seconds at or below the threshold before the cycle is over, so short drop outs are ignored
@@ -51,6 +53,22 @@ DEFAULT_TITLE: Final[str] = "{name}"
 DEFAULT_START_MESSAGE: Final[str] = "{name} started"
 DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
 PROGRESS_MESSAGE: Final[str] = "{progress}% complete"
+
+# minutes after which the end is told again, for as long as nobody says the appliance has been emptied
+CONF_REMINDER: Final[str] = "reminder"
+REMINDER_LIMIT: Final[int] = 3
+# minutes for Remind me, when no reminder is set
+DEFAULT_SNOOZE: Final[int] = 30
+# buttons on the end notification, each followed by the entry id of the appliance
+ACTION_EMPTIED: Final[str] = "APPLIANCE_EMPTIED_"
+ACTION_REMIND: Final[str] = "APPLIANCE_REMIND_"
+ACTION_SWITCH_OFF: Final[str] = "APPLIANCE_SWITCH_OFF_"
+# by the language of Home Assistant, English for any other
+ACTION_TITLES: Final[dict[str, dict[str, str]]] = {
+    "en": {ACTION_EMPTIED: "Emptied", ACTION_REMIND: "Remind me in {minutes} min", ACTION_SWITCH_OFF: "Switch off"},
+    "it": {ACTION_EMPTIED: "Svuotata", ACTION_REMIND: "Ricordamelo tra {minutes} min", ACTION_SWITCH_OFF: "Spegni presa"},
+}
+MOBILE_ACTION_EVENT: Final[str] = "mobile_app_notification_action"
 PREHEAT_PHASE: Final[str] = "Pre-heating"
 FAST_PREHEAT_PHASE: Final[str] = "Fast pre-heat"
 PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"

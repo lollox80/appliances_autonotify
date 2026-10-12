@@ -25,6 +25,10 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import PowerConverter
 
 from .const import (
+    ACTION_EMPTIED,
+    ACTION_REMIND,
+    ACTION_SWITCH_OFF,
+    ACTION_TITLES,
     APPLIANCE_TYPES,
     CAVITY_TEMPERATURE_KEY,
     CONF_CUSTOM_TARGET,
@@ -39,8 +43,10 @@ from .const import (
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
+    CONF_REMINDER,
     CONF_START_MESSAGE,
     CONF_START_TITLE,
+    CONF_SWITCH_ENTITY,
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
@@ -49,6 +55,7 @@ from .const import (
     DEFAULT_GRACE_PERIOD,
     DEFAULT_ICON,
     DEFAULT_MIN_DURATION,
+    DEFAULT_SNOOZE,
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
@@ -57,6 +64,7 @@ from .const import (
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
     ICONS,
+    MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
     MOBILE_PUSH_TRANSPORT,
     NAME_PLACEHOLDER,
@@ -72,6 +80,7 @@ from .const import (
     PROGRESS_KEY,
     PROGRESS_MESSAGE,
     PROGRESS_STEP,
+    REMINDER_LIMIT,
     STATE_RUN,
     STATES_ABANDONED,
     STATES_ACTIVE,
@@ -101,6 +110,8 @@ class ApplianceWatcher:
         self.entry = entry
         self.name: str = entry.title
         self.tag: str = f"appliance_{entry.entry_id}"
+        # the end has a tag of its own, so it can be cleared or told again without touching a Live Activity
+        self.end_tag: str = f"{self.tag}_end"
         self.icon: str = self._name_icon()
         self.cycle_entity_id: str | None = None
         # by translation key, whichever of those made use of the appliance has
@@ -116,10 +127,20 @@ class ApplianceWatcher:
         self.last_progress_mark: int = 0
         # one notification at a time, so a progress update can't overtake the end and reopen the Live Activity
         self._sending: asyncio.Lock = asyncio.Lock()
+        self.reminder: float = entry.options.get(CONF_REMINDER, 0)
+        self.switch_entity_id: str | None = entry.options.get(CONF_SWITCH_ENTITY)
+        self._reminders_sent: int = 0
+        self._cancel_reminder: CALLBACK_TYPE | None = None
 
     @callback
     def async_start(self) -> None:
         raise NotImplementedError
+
+    @callback
+    def async_listen_for_actions(self) -> None:
+        """Answer the buttons on the end notification"""
+        self.entry.async_on_unload(self.hass.bus.async_listen(MOBILE_ACTION_EVENT, self._action_pressed))
+        self.entry.async_on_unload(self._stop_reminding)
 
     def _name_icon(self) -> str:
         return next((icon for word, icon in ICONS.items() if word in self.name.lower()), DEFAULT_ICON)
@@ -154,6 +175,8 @@ class ApplianceWatcher:
             await self._tell(message, ordinary, resend=True)
 
     async def _started(self) -> None:
+        # the last cycle's reminders are no use once the next one is under way
+        self._stop_reminding()
         async with self._sending:
             await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start)
 
@@ -193,7 +216,74 @@ class ApplianceWatcher:
                 extra_data={"mobile_push_notification_tag": self.tag, "mobile_push_clear_notification": True},
             )
             if notify:
-                await self._supernotify(message, title, extra_data={"notification_icon": self.icon} | self._tap_data())
+                await self._tell_end()
+                self._reminders_sent = 0
+                if self.reminder:
+                    self._remind_in(self.reminder)
+
+    async def _tell_end(self, resend: bool = False) -> None:
+        """The end, with buttons to say the appliance has been emptied, to be reminded later, or to switch it off"""
+        await self._supernotify(
+            self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
+            self._text(CONF_END_TITLE, DEFAULT_TITLE),
+            resend=resend,
+            actions=self._end_actions(),
+            extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag} | self._tap_data(),
+        )
+
+    def _end_actions(self) -> list[dict[str, str]]:
+        titles = ACTION_TITLES.get(self.hass.config.language.split("-")[0], ACTION_TITLES["en"])
+        buttons = [ACTION_EMPTIED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self.switch_entity_id else [])
+        return [
+            {"action": f"{button}{self.entry.entry_id}", "title": titles[button].format(minutes=self._snooze_minutes())}
+            for button in buttons
+        ]
+
+    def _snooze_minutes(self) -> int:
+        return int(self.reminder or DEFAULT_SNOOZE)
+
+    @callback
+    def _remind_in(self, minutes: float) -> None:
+        self._stop_reminding()
+        self._cancel_reminder = async_call_later(self.hass, minutes * 60, self._remind)
+
+    @callback
+    def _stop_reminding(self) -> None:
+        if self._cancel_reminder is not None:
+            self._cancel_reminder()
+            self._cancel_reminder = None
+
+    async def _remind(self, now: datetime) -> None:
+        self._cancel_reminder = None
+        self._reminders_sent += 1
+        # Supernotify would drop the same message again as a duplicate
+        await self._tell_end(resend=True)
+        if self.reminder and self._reminders_sent < REMINDER_LIMIT:
+            self._remind_in(self.reminder)
+
+    async def _action_pressed(self, event: Event) -> None:
+        action = str(event.data.get("action") or "")
+        if action == f"{ACTION_EMPTIED}{self.entry.entry_id}":
+            self._stop_reminding()
+            await self._supernotify(
+                self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
+                self._text(CONF_END_TITLE, DEFAULT_TITLE),
+                mobile_only=True,
+                extra_data={"mobile_push_notification_tag": self.end_tag, "mobile_push_clear_notification": True},
+            )
+        elif action == f"{ACTION_REMIND}{self.entry.entry_id}":
+            self._remind_in(self._snooze_minutes())
+        elif action == f"{ACTION_SWITCH_OFF}{self.entry.entry_id}" and self.switch_entity_id:
+            if self.running:
+                # a button left from the last cycle, pressed once the next one has started
+                _LOGGER.warning("APPLIANCES %s is running again, so it was left switched on", self.name)
+                return
+            try:
+                await self.hass.services.async_call(
+                    "switch", "turn_off", {ATTR_ENTITY_ID: self.switch_entity_id}, blocking=True
+                )
+            except HomeAssistantError:
+                _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
 
     def _text(self, key: str, default: str) -> str:
         return str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
@@ -266,8 +356,11 @@ class ApplianceWatcher:
         mobile_only: bool = False,
         resend: bool = False,
         extra_data: dict[str, Any] | None = None,
+        actions: list[dict[str, str]] | None = None,
     ) -> None:
         data: dict[str, Any] = {"message": message, "title": title}
+        if actions:
+            data["actions"] = actions
         if resend:
             # Supernotify's duplicate check ignores digits, so would drop progress updates as repeats
             data["force_resend"] = True

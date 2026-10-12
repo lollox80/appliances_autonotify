@@ -62,6 +62,7 @@ An appliance with no supported integration can be added if a sensor measures the
 | Power threshold | 1 W        | The appliance is running while it draws more than this                                    |
 | Grace period    | 60 seconds | How long power must stay at or below the threshold before the cycle is over, so short drop outs are ignored |
 | Minimum running time | 0 seconds | How long power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored |
+| Smart plug      | None       | The switch the appliance is plugged into, offered as a button on the end notification to switch it off |
 
 Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking. Set a minimum running time,
 60 seconds or so, for appliances that draw a little power when their door is opened or a button pressed, such as a
@@ -81,7 +82,7 @@ never a URL to type in, so a notification can't be made to open anything else.
 | Section              | What it does                                                                                 |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | Start message        | The title and message sent when the appliance starts, shown as they'll be sent, such as "Dishwasher started". Clear a box to go back to the usual wording |
-| End message          | The same for when it finishes, such as "Dishwasher is finished"                              |
+| End message          | The same for when it finishes, such as "Dishwasher is finished". With Supernotify, also a *Reminder*, see below |
 | Notification targets | With Supernotify, *Targets* is the same choice of entities, devices, areas, floors and labels as any Supernotify notification, *Custom targets* is for those outside Home Assistant, such as e-mail addresses or phone numbers, and *Deliveries* limits notifications to those chosen. Leave them empty for Supernotify to choose. Without Supernotify, *Targets* is a choice of notify entities, and left empty means every phone with the Home Assistant app |
 
 ## What Gets Sent
@@ -98,6 +99,21 @@ never a URL to type in, so a notification can't be made to open anything else.
 
 Pausing and resuming an appliance counts as the same cycle. An appliance that is switched off, like an oven,
 counts as finished.
+
+### Buttons on the End Notification
+
+With Supernotify, the end notification has buttons, in the language of Home Assistant where there's a translation
+(English and Italian so far):
+
+| Button         | What it does                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Emptied        | Clears the notification, and stops any reminder                                              |
+| Remind me      | Sends the end notification again later, after the *Reminder* minutes or, with none set, 30   |
+| Switch off     | Only with a *Smart plug* chosen, for a power monitored appliance. Switches it off, unless a new cycle has started since |
+
+With a *Reminder* set in the *End message* section, the end notification is sent again after that many minutes,
+up to 3 times, until *Emptied* is pressed or the next cycle starts. Supernotify adds the buttons of its own scenarios
+after these, and Android shows only the first 3.
 
 ### Oven Pre-heating
 
