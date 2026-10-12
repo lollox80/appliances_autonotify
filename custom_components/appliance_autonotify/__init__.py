@@ -34,6 +34,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -
     watcher_class = PowerWatcher if entry.data.get(CONF_TYPE) == TYPE_POWER else HomeConnectWatcher
     watcher: ApplianceWatcher = watcher_class(hass, entry)
     watcher.async_start()
+    watcher.async_listen_for_actions()
     entry.runtime_data = watcher
     return True
 

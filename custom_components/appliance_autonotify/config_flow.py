@@ -39,8 +39,10 @@ from .const import (
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
+    CONF_REMINDER,
     CONF_START_MESSAGE,
     CONF_START_TITLE,
+    CONF_SWITCH_ENTITY,
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
@@ -99,6 +101,10 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
     if progress:
         fields[vol.Required(CONF_NOTIFY_PROGRESS, default=False)] = BooleanSelector()
     notify: dict[vol.Marker, Any] = {}
+    end: dict[vol.Marker, Any] = {
+        vol.Optional(CONF_END_TITLE): TextSelector(),
+        vol.Optional(CONF_END_MESSAGE): TextSelector(TextSelectorConfig(multiline=True)),
+    }
     if supernotify_available(hass):
         # a choice of what's there, and not a box to type in, so a notification can't be made to open anything else
         choices = [SelectOptionDict(value=path, label=title) for path, title in dashboards(hass).items()]
@@ -111,6 +117,10 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
         notify[vol.Optional(CONF_CUSTOM_TARGET)] = TextSelector(TextSelectorConfig(multiple=True))
         deliveries = sorted({name for names in (await deliveries_by_transport(hass)).values() for name in names})
         notify[vol.Optional(CONF_DELIVERIES)] = SelectSelector(SelectSelectorConfig(options=deliveries, multiple=True))
+        # buttons and reminders go with the end notification, which only Supernotify can give buttons
+        end[vol.Optional(CONF_REMINDER)] = NumberSelector(
+            NumberSelectorConfig(min=0, max=720, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.MINUTES)
+        )
     else:
         notify[vol.Optional(CONF_TARGETS)] = EntitySelector(EntitySelectorConfig(domain="notify", multiple=True))
     sections: dict[str, dict[vol.Marker, Any]] = {
@@ -118,10 +128,7 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
             vol.Optional(CONF_START_TITLE): TextSelector(),
             vol.Optional(CONF_START_MESSAGE): TextSelector(TextSelectorConfig(multiline=True)),
         },
-        SECTION_END: {
-            vol.Optional(CONF_END_TITLE): TextSelector(),
-            vol.Optional(CONF_END_MESSAGE): TextSelector(TextSelectorConfig(multiline=True)),
-        },
+        SECTION_END: end,
         SECTION_NOTIFY: notify,
     }
     # all tuning, so out of the way until it's wanted
@@ -164,6 +171,7 @@ def power_schema(with_name: bool) -> vol.Schema:
     fields[vol.Required(CONF_MIN_DURATION, default=DEFAULT_MIN_DURATION)] = NumberSelector(
         NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS)
     )
+    fields[vol.Optional(CONF_SWITCH_ENTITY)] = EntitySelector(EntitySelectorConfig(domain="switch"))
     return vol.Schema(fields)
 
 
