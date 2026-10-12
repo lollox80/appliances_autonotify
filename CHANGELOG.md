@@ -1,3 +1,6 @@
+---
+title: What's New
+---
 # 0.6.1
 ## 📝 Other changes
 Package naming consistency and auto build

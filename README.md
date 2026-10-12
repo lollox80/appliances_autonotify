@@ -158,5 +158,7 @@ uv run ruff check --fix && uv run ruff format
 uv run mypy custom_components/appliance_autonotify
 ```
 
+This component is an implementation of [RFC-0004](https://supernotify.rhizomatics.org.uk/latest/developer/rfcs/0004-household_appliances_auto_notifier/) from [Supernotify](https://supernotify.rhizomatics.org.uk)
+
 [hacs]: https://hacs.xyz
 [hacsbadge]: https://img.shields.io/badge/HACS-Default-blue.svg
