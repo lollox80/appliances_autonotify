@@ -1085,6 +1085,8 @@ async def test_reminders_stop_when_unloaded(hass: HomeAssistant, freezer) -> Non
     freezer.tick(60 * 60)
     await pass_time(hass, 0)
     assert len(calls) == 3
+
+
 async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
     calls = mock_supernotify(hass)
     hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})

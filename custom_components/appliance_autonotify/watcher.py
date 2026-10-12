@@ -148,6 +148,7 @@ class ApplianceWatcher:
         """Answer the buttons on the end notification"""
         self.entry.async_on_unload(self.hass.bus.async_listen(MOBILE_ACTION_EVENT, self._action_pressed))
         self.entry.async_on_unload(self._stop_reminding)
+
     def _keep_running(self) -> None:
         if self._cancel_end is not None:
             self._cancel_end()
