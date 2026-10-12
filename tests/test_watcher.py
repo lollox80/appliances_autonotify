@@ -21,6 +21,22 @@ from .conftest import DISHWASHER_PROGRAMS, add_appliance, mock_dashboards, mock_
 ANDROID = {"channel": ANDROID_CHANNEL, "importance": "high", "sticky": True}
 
 
+def ended(name: str, entry_id: str, icon: str, switch: bool = False, **extra: Any) -> dict[str, Any]:
+    """The end notification, with its buttons"""
+    actions = [
+        {"action": f"APPLIANCE_EMPTIED_{entry_id}", "title": "Emptied"},
+        {"action": f"APPLIANCE_REMIND_{entry_id}", "title": "Remind me in 30 min"},
+    ]
+    if switch:
+        actions.append({"action": f"APPLIANCE_SWITCH_OFF_{entry_id}", "title": "Switch off"})
+    return {
+        "message": f"{name} is finished",
+        "title": name,
+        "actions": actions,
+        "extra_data": {"notification_icon": icon, "mobile_push_notification_tag": f"appliance_{entry_id}_end"},
+    } | extra
+
+
 async def set_state(hass: HomeAssistant, entity_id: str, state: str) -> None:
     hass.states.async_set(entity_id, state)
     await hass.async_block_till_done()
@@ -63,12 +79,7 @@ async def test_cycle_with_supernotify(hass: HomeAssistant) -> None:
         "delivery": ["mobile_push", "phones"],
         "extra_data": {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True},
     }
-    assert calls[2].data == {
-        "message": "Dishwasher is finished",
-        "title": "Dishwasher",
-        "force_resend": True,
-        "extra_data": {"notification_icon": "mdi:dishwasher"},
-    }
+    assert calls[2].data == ended("Dishwasher", entry.entry_id, "mdi:dishwasher", force_resend=True)
 
     # finished only once
     await set_state(hass, appliance.cycle, "inactive")
@@ -579,19 +590,14 @@ async def test_live_activity_cleared_on_delivery_known_only_by_its_switch(hass: 
 async def test_cycle_ends_without_finished_state(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass, "Oven")
     calls = mock_supernotify(hass)
-    await setup_watcher(hass, appliance)
+    entry = await setup_watcher(hass, appliance)
 
     # an oven switched off never reports `finished`
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.cycle, "inactive")
     assert len(calls) == 3
     assert calls[1].data["extra_data"]["mobile_push_clear_notification"] is True
-    assert calls[2].data == {
-        "message": "Oven is finished",
-        "title": "Oven",
-        "force_resend": True,
-        "extra_data": {"notification_icon": "mdi:stove"},
-    }
+    assert calls[2].data == ended("Oven", entry.entry_id, "mdi:stove", force_resend=True)
 
     await set_state(hass, appliance.cycle, "ready")
     await pass_time(hass, CYCLE_SETTLE)
@@ -830,12 +836,7 @@ async def test_power_monitored_cycle(hass: HomeAssistant, freezer) -> None:
     await pass_time(hass, 0)
     assert len(calls) == 3
     assert calls[1].data["extra_data"] == {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True}
-    assert calls[2].data == {
-        "message": "Washer is finished",
-        "title": "Washer",
-        "force_resend": True,
-        "extra_data": {"notification_icon": "mdi:washing-machine"},
-    }
+    assert calls[2].data == ended("Washer", entry.entry_id, "mdi:washing-machine", force_resend=True)
 
     # ended only once
     await set_state(hass, "sensor.washer_power", "0")
@@ -929,6 +930,146 @@ async def test_power_not_yet_a_cycle_when_unloaded(hass: HomeAssistant, freezer)
     freezer.tick(120)
     await pass_time(hass, 0)
     assert not calls
+
+
+async def finish_power_cycle(hass: HomeAssistant, freezer) -> None:
+    await set_state(hass, "sensor.washer_power", "1800")
+    await set_state(hass, "sensor.washer_power", "0")
+    freezer.tick(60)
+    await pass_time(hass, 0)
+
+
+async def press(hass: HomeAssistant, action: str) -> None:
+    hass.bus.async_fire("mobile_app_notification_action", {"action": action})
+    await hass.async_block_till_done()
+
+
+async def test_end_reminded_until_emptied(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, reminder=20)
+    await finish_power_cycle(hass, freezer)
+    assert len(calls) == 3
+    assert calls[2].data["actions"][1]["title"] == "Remind me in 20 min"
+
+    # told again, as the same notification and past Supernotify's duplicate check
+    freezer.tick(20 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 4
+    assert calls[3].data == calls[2].data | {"force_resend": True}
+
+    # until it's emptied, which also clears the notification
+    await press(hass, f"APPLIANCE_EMPTIED_{entry.entry_id}")
+    assert len(calls) == 5
+    assert calls[4].data["extra_data"] == {
+        "mobile_push_notification_tag": f"appliance_{entry.entry_id}_end",
+        "mobile_push_clear_notification": True,
+    }
+    freezer.tick(60 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 5
+
+
+async def test_end_reminded_no_more_than_three_times(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, reminder=10)
+    await finish_power_cycle(hass, freezer)
+    for _ in range(5):
+        freezer.tick(10 * 60)
+        await pass_time(hass, 0)
+    assert len(calls) == 3 + 3
+
+
+async def test_next_cycle_stops_reminders(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, reminder=10)
+    await finish_power_cycle(hass, freezer)
+    await set_state(hass, "sensor.washer_power", "1800")
+    assert len(calls) == 4
+    freezer.tick(10 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 4
+
+
+async def test_remind_me_later(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass)
+    await finish_power_cycle(hass, freezer)
+
+    # with no reminder set, once, after half an hour
+    await press(hass, f"APPLIANCE_REMIND_{entry.entry_id}")
+    freezer.tick(29 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 3
+    freezer.tick(60)
+    await pass_time(hass, 0)
+    assert len(calls) == 4
+    assert calls[3].data["message"] == "Washer is finished"
+    freezer.tick(60 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 4
+
+    # buttons for another appliance, or anything else, are left alone
+    await press(hass, "APPLIANCE_REMIND_another")
+    await press(hass, "SUPERNOTIFY_SNOOZE")
+    freezer.tick(60 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 4
+
+
+async def test_switch_off_once_finished(hass: HomeAssistant, freezer, caplog) -> None:
+    calls = mock_supernotify(hass)
+    switched = async_mock_service(hass, "switch", "turn_off")
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, switch_entity="switch.washer_plug")
+    await finish_power_cycle(hass, freezer)
+    assert calls[2].data == ended("Washer", entry.entry_id, "mdi:washing-machine", switch=True, force_resend=True)
+
+    await press(hass, f"APPLIANCE_SWITCH_OFF_{entry.entry_id}")
+    assert [c.data for c in switched] == [{"entity_id": "switch.washer_plug"}]
+
+    # not while it's running again
+    await set_state(hass, "sensor.washer_power", "1800")
+    await press(hass, f"APPLIANCE_SWITCH_OFF_{entry.entry_id}")
+    assert len(switched) == 1
+    assert "running again" in caplog.text
+
+
+async def test_switch_off_failure_is_logged(hass: HomeAssistant, freezer, caplog) -> None:
+    mock_supernotify(hass)
+
+    async def fail(call: ServiceCall) -> None:
+        raise HomeAssistantError("plug offline")
+
+    hass.services.async_register("switch", "turn_off", fail)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, switch_entity="switch.washer_plug")
+    await finish_power_cycle(hass, freezer)
+    await press(hass, f"APPLIANCE_SWITCH_OFF_{entry.entry_id}")
+    assert "Switching off Washer failed" in caplog.text
+
+
+async def test_buttons_in_the_language_of_home_assistant(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.config.language = "it"
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, switch_entity="switch.washer_plug", reminder=45)
+    await finish_power_cycle(hass, freezer)
+    assert [a["title"] for a in calls[2].data["actions"]] == ["Svuotata", "Ricordamelo tra 45 min", "Spegni presa"]
+
+
+async def test_reminders_stop_when_unloaded(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, reminder=10)
+    await finish_power_cycle(hass, freezer)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    freezer.tick(60 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 3
 
 
 async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
