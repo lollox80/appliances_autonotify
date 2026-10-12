@@ -22,6 +22,7 @@ dev = [
     "voluptuous-stubs>=0.1.1",
     "homeassistant-repl",
     "genbadge[all]",
+    "ty"
 ]
 docs=[
     "pymdown-extensions",
