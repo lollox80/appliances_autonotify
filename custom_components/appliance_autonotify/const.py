@@ -48,6 +48,8 @@ DEFAULT_TITLE: Final[str] = "{name}"
 DEFAULT_START_MESSAGE: Final[str] = "{name} started"
 DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
 PROGRESS_MESSAGE: Final[str] = "{progress}% complete"
+# the text of the Android status bar chip, which shows it in full only up to about 7 characters
+PROGRESS_CHIP: Final[str] = "{progress}%"
 PREHEAT_PHASE: Final[str] = "Pre-heating"
 FAST_PREHEAT_PHASE: Final[str] = "Fast pre-heat"
 PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"
@@ -101,6 +103,9 @@ PROGRESS_FINAL: Final[int] = 90
 PROGRESS_FINAL_STEP: Final[int] = 2
 
 MOBILE_PUSH_TRANSPORT: Final[str] = "mobile_push"
+# Android notification channel of its own, made with sound on the first notification, since a Live Update in the
+# app's default channel arrives without a sound
+ANDROID_CHANNEL: Final[str] = "Appliances"
 # platform of the notify entities used when there's no Supernotify and none have been chosen
 MOBILE_APP_PLATFORM: Final[str] = "mobile_app"
 
@@ -137,6 +142,19 @@ PHASES_NOTIFIED: Final[tuple[str, ...]] = (TYPE_OVEN,)
 # matched against the device name where the type isn't known, first hit wins
 ICONS: Final[dict[str, str]] = {
     "dishwasher": "mdi:dishwasher",
+    # Italian names
+    "lavastoviglie": "mdi:dishwasher",
+    "lavasciuga": "mdi:washing-machine",
+    "lavatrice": "mdi:washing-machine",
+    "asciugatrice": "mdi:tumble-dryer",
+    "microonde": "mdi:microwave",
+    "forno": "mdi:stove",
+    "caffè": "mdi:coffee-maker",
+    "caffe": "mdi:coffee-maker",
+    "cappa": "mdi:fan",
+    "piano cottura": "mdi:pot-steam",
+    "aspirapolvere": "mdi:robot-vacuum",
+    "bollitore": "mdi:kettle",
     "dryer": "mdi:tumble-dryer",
     "wash": "mdi:washing-machine",
     "oven": "mdi:stove",
