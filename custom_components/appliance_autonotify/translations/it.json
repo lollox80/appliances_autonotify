@@ -1,0 +1,139 @@
+{
+    "config": {
+        "flow_title": "{name}",
+        "step": {
+            "user": {
+                "title": "Notifiche degli elettrodomestici",
+                "description": "{supernotify}\n\n{found}\n\nVengono rilevati automaticamente solo gli elettrodomestici Home Connect (Bosch, Siemens, Neff). Quelli collegati a un misuratore di potenza non vengono rilevati, ma si possono aggiungere a mano una volta completata l'installazione.",
+                "data": {
+                    "auto_discover": "Configura gli elettrodomestici in automatico"
+                },
+                "data_description": {
+                    "auto_discover": "Disattiva per ricevere una proposta per ogni elettrodomestico trovato e scegliere quali aggiungere"
+                }
+            },
+            "power": {
+                "title": "Elettrodomestico con misuratore di potenza",
+                "description": "Per qualsiasi elettrodomestico su una presa smart o un altro misuratore di potenza. Il ciclo inizia quando la potenza supera la soglia e finisce quando resta pari o inferiore alla soglia per tutto il periodo di tolleranza.",
+                "data": {
+                    "name": "Nome dell'elettrodomestico",
+                    "power_entity": "Sensore di potenza",
+                    "threshold": "Soglia di potenza",
+                    "grace_period": "Periodo di tolleranza",
+                    "min_duration": "Durata minima di funzionamento",
+                    "switch_entity": "Presa smart",
+                    "switch_off_button": "Pulsante Spegni presa"
+                },
+                "data_description": {
+                    "name": "Usato nelle notifiche e per scegliere l'icona",
+                    "power_entity": "Il sensore che misura la potenza assorbita dall'elettrodomestico",
+                    "threshold": "L'elettrodomestico è in funzione finché assorbe più di questo valore",
+                    "grace_period": "Per quanto tempo la potenza deve restare pari o inferiore alla soglia prima che il ciclo sia finito, così i brevi cali vengono ignorati",
+                    "min_duration": "Per quanto tempo la potenza deve essere stata sopra la soglia prima che conti come ciclo, così uno sportello aperto o un tasto premuto vengono ignorati",
+                    "switch_entity": "La presa a cui è collegato l'elettrodomestico, proposta come pulsante per spegnerla a ciclo finito",
+                    "switch_off_button": "Mette sulla notifica di fine un pulsante per spegnere la presa smart. Disattiva per una presa che deve restare accesa."
+                }
+            },
+            "confirm": {
+                "title": "Notifiche per {name}",
+                "description": "Vuoi essere avvisato quando {name} inizia e finisce?\n\n{supernotify}"
+            }
+        },
+        "abort": {
+            "already_configured": "Questo elettrodomestico è già configurato",
+            "already_in_progress": "La configurazione di questo elettrodomestico è già in corso"
+        }
+    },
+    "options": {
+        "step": {
+            "discovery": {
+                "title": "Rilevamento automatico",
+                "description": "Con il rilevamento automatico ogni elettrodomestico supportato viene configurato per te, ora e ogni volta che ne aggiungi un altro. Gli elettrodomestici già configurati restano come sono.",
+                "data": {
+                    "auto_discover": "Configura gli elettrodomestici in automatico"
+                },
+                "data_description": {
+                    "auto_discover": "Disattiva per ricevere una proposta per ogni elettrodomestico trovato e scegliere quali aggiungere"
+                }
+            },
+            "settings": {
+                "title": "Notifiche per {name}",
+                "description": "Tutto quello che c'è qui è facoltativo.\n\n{supernotify}",
+                "data": {
+                    "notify_start": "Notifica l'inizio",
+                    "notify_end": "Notifica la fine",
+                    "notify_phase": "Notifica le fasi",
+                    "notify_progress": "Notifica l'avanzamento",
+                    "dashboard": "Dashboard da aprire"
+                },
+                "data_description": {
+                    "notify_start": "Invia una notifica quando l'elettrodomestico parte. Se disattivato, la Live Activity viene comunque aperta, senza suono e solo sui telefoni.",
+                    "notify_end": "Invia una notifica quando l'elettrodomestico finisce. Se disattivato, la Live Activity viene comunque chiusa.",
+                    "notify_phase": "Invia una notifica quando finisce una fase del ciclo, ad esempio quando il forno è arrivato in temperatura. Se disattivato, viene mostrata solo sulla Live Activity.",
+                    "dashboard": "Aperta quando si tocca una notifica o la Live Activity. Lascia vuoto per aprire l'app dove si trovava.",
+                    "notify_progress": "Invia una notifica ogni 10% del ciclo. Se disattivato, l'avanzamento compare solo nella barra della Live Activity, aggiornata senza suono."
+                },
+                "sections": {
+                    "start": {
+                        "name": "Messaggio di inizio",
+                        "description": "Inviato quando l'elettrodomestico parte. Svuota un campo per tornare al testo predefinito.",
+                        "data": {
+                            "start_title": "Titolo",
+                            "start_message": "Messaggio"
+                        }
+                    },
+                    "end": {
+                        "name": "Messaggio di fine",
+                        "description": "Inviato quando l'elettrodomestico finisce. Svuota un campo per tornare al testo predefinito.",
+                        "data": {
+                            "end_title": "Titolo",
+                            "end_message": "Messaggio",
+                            "reminder": "Promemoria",
+                            "reminder_repeats": "Ripetizioni del promemoria"
+                        },
+                        "data_description": {
+                            "reminder": "Minuti dopo i quali la fine viene inviata di nuovo, finché non si preme Finito sulla notifica. 0 per nessun promemoria. Ricordamelo dopo, sulla notifica, attende questo tempo o 30 minuti.",
+                            "reminder_repeats": "Quante volte la fine viene inviata di nuovo"
+                        }
+                    },
+                    "notify": {
+                        "name": "Destinatari delle notifiche",
+                        "description": "Chi e cosa viene avvisato. Lascia tutto vuoto per la scelta predefinita.",
+                        "data": {
+                            "targets": "Destinatari",
+                            "target": "Destinatari",
+                            "custom_target": "Destinatari personalizzati",
+                            "deliveries": "Consegne"
+                        },
+                        "data_description": {
+                            "targets": "Entità notify a cui inviare. Lascia vuoto per tutti i telefoni con l'app Home Assistant.",
+                            "target": "Chi o cosa avvisare, come per qualsiasi notifica Supernotify. Lascia vuoto per far scegliere a Supernotify.",
+                            "custom_target": "Destinatari fuori da Home Assistant, come indirizzi e-mail o numeri di telefono.",
+                            "deliveries": "Limita le notifiche a queste consegne di Supernotify. Lascia vuoto per far scegliere a Supernotify."
+                        }
+                    }
+                }
+            },
+            "power": {
+                "title": "Misurazione della potenza per {name}",
+                "description": "Il ciclo inizia quando la potenza supera la soglia e finisce quando resta pari o inferiore alla soglia per tutto il periodo di tolleranza.",
+                "data": {
+                    "power_entity": "Sensore di potenza",
+                    "threshold": "Soglia di potenza",
+                    "grace_period": "Periodo di tolleranza",
+                    "min_duration": "Durata minima di funzionamento",
+                    "switch_entity": "Presa smart",
+                    "switch_off_button": "Pulsante Spegni presa"
+                },
+                "data_description": {
+                    "power_entity": "Il sensore che misura la potenza assorbita dall'elettrodomestico",
+                    "threshold": "L'elettrodomestico è in funzione finché assorbe più di questo valore",
+                    "grace_period": "Per quanto tempo la potenza deve restare pari o inferiore alla soglia prima che il ciclo sia finito, così i brevi cali vengono ignorati",
+                    "min_duration": "Per quanto tempo la potenza deve essere stata sopra la soglia prima che conti come ciclo, così uno sportello aperto o un tasto premuto vengono ignorati",
+                    "switch_entity": "La presa a cui è collegato l'elettrodomestico, proposta come pulsante per spegnerla a ciclo finito",
+                    "switch_off_button": "Mette sulla notifica di fine un pulsante per spegnere la presa smart. Disattiva per una presa che deve restare accesa."
+                }
+            }
+        }
+    }
+}
