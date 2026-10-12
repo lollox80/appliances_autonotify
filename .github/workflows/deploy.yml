@@ -100,3 +100,10 @@ jobs:
         path: junit/test-results-${{ matrix.python-version }}.xml
         # Use always() to always run this step to publish test results when there are test failures
       if: ${{ always() }}
+
+    - name: ProperDocs
+      run:  |
+        git pull
+        uv sync --dev --group docs
+        sudo apt-get install pngquant
+        uv run properdocs gh-deploy

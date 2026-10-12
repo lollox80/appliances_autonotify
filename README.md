@@ -8,7 +8,7 @@
 
 Automatic notifications for household appliances in Home Assistant, with no automations or YAML.
 
-![Example Dishwasher Progress](docs/assets/images/dishwasher_progress.png)
+![Example Dishwasher Progress](./assets/images/dishwasher_progress.png)
 
 When a dishwasher, washing machine, oven or other appliance starts a cycle, you're told it started, your phone
 shows a [Live Activity](https://companion.home-assistant.io/docs/notifications/live-activities) with progress

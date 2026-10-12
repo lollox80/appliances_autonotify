@@ -12,3 +12,5 @@ htmlcov/
 junit/
 .env
 .agents
+site/
+.cache/
