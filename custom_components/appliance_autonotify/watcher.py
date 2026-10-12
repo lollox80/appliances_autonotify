@@ -29,6 +29,7 @@ from .const import (
     ACTION_REMIND,
     ACTION_SWITCH_OFF,
     ACTION_TITLES,
+    ANDROID_CHANNEL,
     APPLIANCE_TYPES,
     CAVITY_TEMPERATURE_KEY,
     CONF_CUSTOM_TARGET,
@@ -51,6 +52,7 @@ from .const import (
     CONF_TARGETS,
     CONF_THRESHOLD,
     CYCLE_KEYS,
+    CYCLE_SETTLE,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_ICON,
@@ -73,8 +75,10 @@ from .const import (
     PREHEAT_FINISHED_KEYS,
     PREHEAT_MESSAGE,
     PREHEAT_PHASE,
+    PREHEAT_SETTLE,
     PREHEATED_MESSAGE,
     PROGRAM_KEYS,
+    PROGRESS_CHIP,
     PROGRESS_FINAL,
     PROGRESS_FINAL_STEP,
     PROGRESS_KEY,
@@ -86,6 +90,7 @@ from .const import (
     STATES_ACTIVE,
     STATES_EVENT_ON,
     STATES_FINISHED,
+    STATES_SETTLING,
     SUPERNOTIFY_DOMAIN,
     TARGET_TEMPERATURE_KEY,
     TEMPERATURE_STEP,
@@ -131,6 +136,8 @@ class ApplianceWatcher:
         self.switch_entity_id: str | None = entry.options.get(CONF_SWITCH_ENTITY)
         self._reminders_sent: int = 0
         self._cancel_reminder: CALLBACK_TYPE | None = None
+        # the end of the cycle, waiting to see that the appliance doesn't carry on
+        self._cancel_end: CALLBACK_TYPE | None = None
 
     @callback
     def async_start(self) -> None:
@@ -141,6 +148,10 @@ class ApplianceWatcher:
         """Answer the buttons on the end notification"""
         self.entry.async_on_unload(self.hass.bus.async_listen(MOBILE_ACTION_EVENT, self._action_pressed))
         self.entry.async_on_unload(self._stop_reminding)
+    def _keep_running(self) -> None:
+        if self._cancel_end is not None:
+            self._cancel_end()
+            self._cancel_end = None
 
     def _name_icon(self) -> str:
         return next((icon for word, icon in ICONS.items() if word in self.name.lower()), DEFAULT_ICON)
@@ -178,7 +189,8 @@ class ApplianceWatcher:
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
         async with self._sending:
-            await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start)
+            # resent, since to Supernotify a second cycle soon after the first is a repeat to be dropped
+            await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start, resend=True)
 
     async def _tell(self, message: str, ordinary: bool, resend: bool = False) -> None:
         """Notify of a cycle under way, either everywhere or with no more than its Live Activity brought up to date"""
@@ -284,6 +296,9 @@ class ApplianceWatcher:
                 )
             except HomeAssistantError:
                 _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
+                await self._supernotify(
+                    message, title, resend=True, extra_data={"notification_icon": self.icon} | self._tap_data()
+                )
 
     def _text(self, key: str, default: str) -> str:
         return str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
@@ -337,6 +352,11 @@ class ApplianceWatcher:
             "mobile_push_notification_tag": self.tag,
             "live_update": True,
             "notification_icon": self.icon,
+            # Android only, iOS ignores them: a channel of its own so the start sounds, and kept when tapped as
+            # a Live Activity is, since otherwise the next update brings it back as a new, sounding, notification
+            "channel": ANDROID_CHANNEL,
+            "importance": "high",
+            "sticky": True,
         } | self._tap_data()
         progress = self._progress()
         if progress is not None:
@@ -347,6 +367,10 @@ class ApplianceWatcher:
         if finish_time is not None:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
+        elif progress is not None:
+            # the Android status bar chip shows this in place of the time left, so only with no time to show, and
+            # short, since a longer text leaves the chip with only its icon
+            data["critical_text"] = PROGRESS_CHIP.format(progress=progress)
         return data
 
     async def _supernotify(
@@ -418,6 +442,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.preheated: bool = False
         # the temperature the Live Activity last showed, of an oven up to heat
         self.shown_temperature: float | None = None
+        # the oven saying it's up to heat, waiting to see that it wasn't being switched off
+        self._cancel_preheated: CALLBACK_TYPE | None = None
 
     @callback
     def async_start(self) -> None:
@@ -454,6 +480,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.preheated = self.running
 
         self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._cycle_changed))
+        self.entry.async_on_unload(self._keep_running)
+        self.entry.async_on_unload(self._forget_preheated)
         for keys, listener in (
             ((PROGRESS_KEY,), self._progress_changed),
             ((CAVITY_TEMPERATURE_KEY, TARGET_TEMPERATURE_KEY), self._temperature_changed),
@@ -530,7 +558,19 @@ class HomeConnectWatcher(ApplianceWatcher):
         new_state = event.data["new_state"]
         # only as it happens, since the sensor may still be telling of the last time the oven was heated
         if self.running and not self.preheated and new_state is not None and new_state.state in STATES_EVENT_ON:
+            self._forget_preheated()
+            self._cancel_preheated = async_call_later(self.hass, PREHEAT_SETTLE, self._preheat_settled)
+
+    async def _preheat_settled(self, now: datetime) -> None:
+        self._cancel_preheated = None
+        if self.running and not self.preheated and self._cancel_end is None:
             await self._preheated()
+
+    @callback
+    def _forget_preheated(self) -> None:
+        if self._cancel_preheated is not None:
+            self._cancel_preheated()
+            self._cancel_preheated = None
 
     async def _temperature_shown(self, always: bool = False) -> None:
         """Keep the Live Activity of an oven up to heat to its temperature, give or take a few degrees"""
@@ -571,7 +611,11 @@ class HomeConnectWatcher(ApplianceWatcher):
             return
         state: str = new_state.state
         _LOGGER.debug("APPLIANCES %s cycle state %s, running: %s", self.name, state, self.running)
-        if state == STATE_RUN and not self.running:
+        if state == STATE_RUN:
+            # back on within moments of going off, so the same cycle
+            self._keep_running()
+            if self.running:
+                return
             self.running = True
             # unless it's hot already, from not long having been off
             temperatures = self._temperatures()
@@ -583,13 +627,26 @@ class HomeConnectWatcher(ApplianceWatcher):
             progress = self._progress()
             self.last_progress_mark = -1 if progress is None else self._mark(progress)
             await self._started()
-        elif state in STATES_FINISHED and self.running:
-            self.running = False
-            await self._ended(finished=True)
-        elif state in STATES_ABANDONED and self.running:
-            self.running = False
-            await self._ended(finished=False)
+        elif not self.running:
+            return
+        elif state in STATES_SETTLING:
+            if self._cancel_end is None:
+                self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, self._settled)
+        elif state in STATES_FINISHED:
+            await self._cycle_over(finished=True)
+        elif state in STATES_ABANDONED:
+            await self._cycle_over(finished=False)
         # anything else, such as `unavailable` while the vendor cloud is away, leaves the cycle as it was
+
+    async def _settled(self, now: datetime) -> None:
+        self._cancel_end = None
+        await self._cycle_over(finished=True)
+
+    async def _cycle_over(self, finished: bool) -> None:
+        self._keep_running()
+        self._forget_preheated()
+        self.running = False
+        await self._ended(finished)
 
 
 class PowerWatcher(ApplianceWatcher):

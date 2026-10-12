@@ -23,6 +23,26 @@ dev = [
     "homeassistant-repl",
     "genbadge[all]",
 ]
+docs=[
+    "pymdown-extensions",
+    "mkdocs-materialx[imaging]",
+    "mkdocs-autorefs",
+    "mkdocs-coverage",
+    "mkdocs-pagetree-plugin",
+    "properdocs",
+    "pngquant",
+    "mkdocstrings",
+    "mkdocstrings-python",
+    "mkdocs-git-revision-date-localized-plugin",
+    "mkdocs-meta-descriptions-plugin",
+    "mkdocs-minify-html-plugin",
+    "mkdocs-htmlproofer-plugin",
+    "mkdocs-minify-plugin",
+    "mkdocs-material-extensions",
+    "mkdocs-homepage-copier",
+    "mkdocs-llmstxt>=0.5.0,<0.6.0",
+    "bs4" # llmsgen doc hook
+]
 
 [tool.uv]
 override-dependencies = [
@@ -71,3 +91,10 @@ addopts = [
 [[tool.mypy.overrides]]
 module = ["pytest_homeassistant_custom_component.*"]
 follow_untyped_imports = true
+
+[project.urls]
+Homepage="https://appliances-autonotify.rhizomatics.org.uk"
+Repository="https://github.com/rhizomatics/appliances_autonotify"
+Documentation="https://appliances-autonotify.rhizomatics.org.uk"
+Issues="https://github.com/rhizomatics/appliances_autonotify/issues"
+Changelog="https://github.com/rhizomatics/appliances_autonotify/blob/main/CHANGELOG.md"

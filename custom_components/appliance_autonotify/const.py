@@ -69,6 +69,8 @@ ACTION_TITLES: Final[dict[str, dict[str, str]]] = {
     "it": {ACTION_EMPTIED: "Svuotata", ACTION_REMIND: "Ricordamelo tra {minutes} min", ACTION_SWITCH_OFF: "Spegni presa"},
 }
 MOBILE_ACTION_EVENT: Final[str] = "mobile_app_notification_action"
+# the text of the Android status bar chip, which shows it in full only up to about 7 characters
+PROGRESS_CHIP: Final[str] = "{progress}%"
 PREHEAT_PHASE: Final[str] = "Pre-heating"
 FAST_PREHEAT_PHASE: Final[str] = "Fast pre-heat"
 PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"
@@ -104,14 +106,20 @@ ENTITY_DOMAINS: Final[dict[str, str]] = {
 }
 # degrees between Live Activity updates of an oven up to heat, whose temperature never stops wandering
 TEMPERATURE_STEP: Final[float] = 5
+# seconds before an oven saying it's up to heat is believed, since one switched off says so too, just before it's off
+PREHEAT_SETTLE: Final[float] = 3
 # an event sensor is `off` until whatever it tells of has happened
 STATES_EVENT_ON: Final[tuple[str, ...]] = ("present", "confirmed", "on")
 
 STATE_RUN: Final[str] = "run"
 # a cycle already under way, so not a new start when `run` follows
 STATES_ACTIVE: Final[tuple[str, ...]] = ("run", "pause", "actionrequired")
-# the cycle is over, an oven switched off goes straight from `run` to `ready` or `inactive` without ever being `finished`
-STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "ready", "inactive")
+# the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`
+STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive")
+# over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed
+STATES_SETTLING: Final[tuple[str, ...]] = ("ready",)
+# seconds an appliance is left to settle before the cycle is over
+CYCLE_SETTLE: Final[float] = 10
 # the cycle is over without finishing, so the Live Activity goes without an end notification
 STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting")
 
@@ -122,6 +130,9 @@ PROGRESS_FINAL: Final[int] = 90
 PROGRESS_FINAL_STEP: Final[int] = 2
 
 MOBILE_PUSH_TRANSPORT: Final[str] = "mobile_push"
+# Android notification channel of its own, made with sound on the first notification, since a Live Update in the
+# app's default channel arrives without a sound
+ANDROID_CHANNEL: Final[str] = "Appliances"
 # platform of the notify entities used when there's no Supernotify and none have been chosen
 MOBILE_APP_PLATFORM: Final[str] = "mobile_app"
 
@@ -158,6 +169,19 @@ PHASES_NOTIFIED: Final[tuple[str, ...]] = (TYPE_OVEN,)
 # matched against the device name where the type isn't known, first hit wins
 ICONS: Final[dict[str, str]] = {
     "dishwasher": "mdi:dishwasher",
+    # Italian names
+    "lavastoviglie": "mdi:dishwasher",
+    "lavasciuga": "mdi:washing-machine",
+    "lavatrice": "mdi:washing-machine",
+    "asciugatrice": "mdi:tumble-dryer",
+    "microonde": "mdi:microwave",
+    "forno": "mdi:stove",
+    "caffè": "mdi:coffee-maker",
+    "caffe": "mdi:coffee-maker",
+    "cappa": "mdi:fan",
+    "piano cottura": "mdi:pot-steam",
+    "aspirapolvere": "mdi:robot-vacuum",
+    "bollitore": "mdi:kettle",
     "dryer": "mdi:tumble-dryer",
     "wash": "mdi:washing-machine",
     "oven": "mdi:stove",
