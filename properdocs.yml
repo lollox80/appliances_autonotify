@@ -11,7 +11,7 @@ theme:
   custom_dir: docs/overrides
   highlightjs: true
   language: en
-  logo: assets/images/autoarm-dark-256x256.png
+  logo: assets/images/icon.png
   icon:
     repo: fontawesome/brands/github
   features:
