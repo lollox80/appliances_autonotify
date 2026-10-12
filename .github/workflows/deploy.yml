@@ -100,3 +100,31 @@ jobs:
         path: junit/test-results-${{ matrix.python-version }}.xml
         # Use always() to always run this step to publish test results when there are test failures
       if: ${{ always() }}
+
+    - name: ProperDocs
+      run:  |
+        uv sync --dev --group docs
+        sudo apt-get install pngquant
+        uv run properdocs build
+    - name: Upload docs site
+      # only main is published, a pull request or release just proves the docs build
+      if: github.event_name == 'push'
+      uses: actions/upload-pages-artifact@v5
+      with:
+        path: site
+
+  deploy-docs:
+    # Pages is set to deploy from GitHub Actions, so the site goes up as an artifact rather than a gh-pages branch
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v5
