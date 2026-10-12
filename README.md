@@ -24,7 +24,9 @@ in English only. Any other appliance can be added by hand if it has a power moni
 - An appliance set up with the Home Connect integration, or one with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification
-- Home Assistant app installed on an Apple mobile device, minimum iOS/iPadOS 17.2
+- Home Assistant app installed on an Apple mobile device, minimum iOS 17.2, or on an Android one, where a
+  [Live Update](https://companion.home-assistant.io/docs/notifications/live-activities) needs Android 16 or later,
+  and earlier versions show an ordinary notification with a progress bar
 
 Without Supernotify, it only sends a start and an end notification, to every phone with the Home Assistant app
 unless you choose other notify entities.
@@ -61,8 +63,12 @@ An appliance with no supported integration can be added if a sensor measures the
 | --------------- | ---------- | ----------------------------------------------------------------------------------------- |
 | Power threshold | 1 W        | The appliance is running while it draws more than this                                    |
 | Grace period    | 60 seconds | How long power must stay at or below the threshold before the cycle is over, so short drop outs are ignored |
+| Minimum running time | 0 seconds | How long power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored |
 
-Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking.
+Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking. Set a minimum running time,
+60 seconds or so, for appliances that draw a little power when their door is opened or a button pressed, such as a
+dishwasher whose light comes on, so that isn't notified as a cycle. Time above the threshold adds up across drop outs
+shorter than the grace period, so a cycle that pauses as it starts still counts.
 
 ## Settings
 
@@ -115,6 +121,13 @@ coffee maker, cleaning robot or air conditioner. A power monitored appliance has
 used instead, as in "Washer" or "Kettle".
 
 ## Known Limits
+
+- On a Samsung phone, the status bar chip, the Now Bar and the appliance's colour only show with the developer option
+  *Live notifications for all apps* turned on. See [Android and iOS](docs/mobile_platforms.md) for everything each
+  platform shows
+- On Android the notifications go in their own *Appliances* channel, made with sound the first time, since a Live
+  Update in the app's usual channel is silent. Its sound can be changed in the phone's settings for the Home
+  Assistant app, and is kept from then on
 
 - Pre-heating is the only phase of a cycle there is to tell of, since Home Connect reports none for a dishwasher or washer, such as pre-wash or rinse
 

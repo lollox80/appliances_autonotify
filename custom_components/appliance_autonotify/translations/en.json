@@ -19,13 +19,15 @@
                     "name": "Appliance name",
                     "power_entity": "Power sensor",
                     "threshold": "Power threshold",
-                    "grace_period": "Grace period"
+                    "grace_period": "Grace period",
+                    "min_duration": "Minimum running time"
                 },
                 "data_description": {
                     "name": "Used in notifications, and to choose an icon",
                     "power_entity": "The sensor measuring the power drawn by the appliance",
                     "threshold": "The appliance is running while it draws more than this",
-                    "grace_period": "How long the power must stay at or below the threshold before the cycle is over, so short drop outs are ignored"
+                    "grace_period": "How long the power must stay at or below the threshold before the cycle is over, so short drop outs are ignored",
+                    "min_duration": "How long the power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored"
                 }
             },
             "confirm": {
@@ -108,12 +110,14 @@
                 "data": {
                     "power_entity": "Power sensor",
                     "threshold": "Power threshold",
-                    "grace_period": "Grace period"
+                    "grace_period": "Grace period",
+                    "min_duration": "Minimum running time"
                 },
                 "data_description": {
                     "power_entity": "The sensor measuring the power drawn by the appliance",
                     "threshold": "The appliance is running while it draws more than this",
-                    "grace_period": "How long the power must stay at or below the threshold before the cycle is over, so short drop outs are ignored"
+                    "grace_period": "How long the power must stay at or below the threshold before the cycle is over, so short drop outs are ignored",
+                    "min_duration": "How long the power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored"
                 }
             }
         }

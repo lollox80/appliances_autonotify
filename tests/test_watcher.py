@@ -13,9 +13,12 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
-from custom_components.appliance_autonotify.const import CYCLE_SETTLE, DOMAIN, PREHEAT_SETTLE
+from custom_components.appliance_autonotify.const import ANDROID_CHANNEL, CYCLE_SETTLE, DOMAIN, PREHEAT_SETTLE
 
 from .conftest import DISHWASHER_PROGRAMS, add_appliance, mock_dashboards, mock_supernotify, setup_watcher
+
+# the Android only fields that every Live Activity notification carries
+ANDROID = {"channel": ANDROID_CHANNEL, "importance": "high", "sticky": True}
 
 
 async def set_state(hass: HomeAssistant, entity_id: str, state: str) -> None:
@@ -36,7 +39,12 @@ async def test_cycle_with_supernotify(hass: HomeAssistant) -> None:
         "message": "Dishwasher started",
         "title": "Dishwasher",
         "force_resend": True,
-        "extra_data": {"mobile_push_notification_tag": tag, "live_update": True, "notification_icon": "mdi:dishwasher"},
+        "extra_data": {
+            "mobile_push_notification_tag": tag,
+            "live_update": True,
+            "notification_icon": "mdi:dishwasher",
+            **ANDROID,
+        },
     }
 
     # paused and resumed is the same cycle
@@ -99,6 +107,7 @@ async def test_progress_updates_mobile_only(hass: HomeAssistant) -> None:
             "mobile_push_notification_tag": tag,
             "live_update": True,
             "notification_icon": "mdi:dishwasher",
+            **ANDROID,
             "progress": 12,
             "progress_max": 100,
             "chronometer": True,
@@ -141,8 +150,11 @@ async def test_progress_notified_when_asked_for(hass: HomeAssistant) -> None:
             "mobile_push_notification_tag": tag,
             "live_update": True,
             "notification_icon": "mdi:dishwasher",
+            **ANDROID,
             "progress": 10,
             "progress_max": 100,
+            # with no finish time, the Android status bar chip has the progress to show
+            "critical_text": "10%",
         },
     }
 
@@ -260,6 +272,7 @@ async def test_start_and_end_notifications_switched_off(hass: HomeAssistant) -> 
             "mobile_push_notification_tag": tag,
             "live_update": True,
             "notification_icon": "mdi:dishwasher",
+            **ANDROID,
             "silent": True,
             "alert_once": True,
         },
@@ -364,6 +377,7 @@ async def test_oven_progress_is_its_temperature_until_up_to_heat(hass: HomeAssis
         "mobile_push_notification_tag": f"appliance_{entry.entry_id}",
         "live_update": True,
         "notification_icon": "mdi:stove",
+        **ANDROID,
         "silent": True,
         "alert_once": True,
     }
@@ -753,10 +767,10 @@ async def test_setup_retried_when_appliance_missing(hass: HomeAssistant) -> None
     assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
-async def setup_power_watcher(hass: HomeAssistant, **options: float) -> MockConfigEntry:
+async def setup_power_watcher(hass: HomeAssistant, title: str = "Washer", **options: float) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title="Washer",
+        title=title,
         unique_id="sensor.washer_power",
         data={"type": "power"},
         options={"power_entity": "sensor.washer_power", **options},
@@ -788,7 +802,12 @@ async def test_power_monitored_cycle(hass: HomeAssistant, freezer) -> None:
         "message": "Washer started",
         "title": "Washer",
         "force_resend": True,
-        "extra_data": {"mobile_push_notification_tag": tag, "live_update": True, "notification_icon": "mdi:washing-machine"},
+        "extra_data": {
+            "mobile_push_notification_tag": tag,
+            "live_update": True,
+            "notification_icon": "mdi:washing-machine",
+            **ANDROID,
+        },
     }
 
     # a drop out shorter than the grace period is the same cycle
@@ -852,3 +871,69 @@ async def test_power_threshold_grace_and_units(hass: HomeAssistant, freezer) -> 
     freezer.tick(300)
     await pass_time(hass, 0)
     assert len(calls) == 3
+
+
+async def test_power_too_short_for_a_cycle_is_ignored(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "3", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, threshold=5, grace_period=100, min_duration=60)
+
+    # a door opened, as seen on a real dishwasher: 14W for 11 seconds
+    await set_state(hass, "sensor.washer_power", "14")
+    freezer.tick(11)
+    await pass_time(hass, 0)
+    await set_state(hass, "sensor.washer_power", "3")
+    freezer.tick(100)
+    await pass_time(hass, 0)
+    assert not calls
+
+    # and a later cycle still counts from nothing
+    await set_state(hass, "sensor.washer_power", "14")
+    freezer.tick(50)
+    await pass_time(hass, 0)
+    assert not calls
+
+
+async def test_power_long_enough_is_a_cycle(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, threshold=5, grace_period=120, min_duration=60)
+
+    # time above the threshold adds up across drop outs shorter than the grace period
+    await set_state(hass, "sensor.washer_power", "70")
+    freezer.tick(40)
+    await pass_time(hass, 0)
+    await set_state(hass, "sensor.washer_power", "0")
+    freezer.tick(20)
+    await pass_time(hass, 0)
+    await set_state(hass, "sensor.washer_power", "190")
+    freezer.tick(19)
+    await pass_time(hass, 0)
+    assert not calls
+    freezer.tick(1)
+    await pass_time(hass, 0)
+    assert [c.data["message"] for c in calls] == ["Washer started"]
+
+    await set_state(hass, "sensor.washer_power", "0")
+    freezer.tick(120)
+    await pass_time(hass, 0)
+    assert [c.data["message"] for c in calls] == ["Washer started", "Washer is finished", "Washer is finished"]
+
+
+async def test_power_not_yet_a_cycle_when_unloaded(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, min_duration=60)
+    await set_state(hass, "sensor.washer_power", "1800")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    freezer.tick(120)
+    await pass_time(hass, 0)
+    assert not calls
+
+
+async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, "Lavastoviglie cucina")
+    await set_state(hass, "sensor.washer_power", "1800")
+    assert calls[0].data["extra_data"]["notification_icon"] == "mdi:dishwasher"

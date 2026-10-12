@@ -25,6 +25,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import PowerConverter
 
 from .const import (
+    ANDROID_CHANNEL,
     APPLIANCE_TYPES,
     CAVITY_TEMPERATURE_KEY,
     CONF_CUSTOM_TARGET,
@@ -33,6 +34,7 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
     CONF_NOTIFY_PROGRESS,
@@ -48,6 +50,7 @@ from .const import (
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_ICON,
+    DEFAULT_MIN_DURATION,
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
@@ -67,6 +70,7 @@ from .const import (
     PREHEAT_SETTLE,
     PREHEATED_MESSAGE,
     PROGRAM_KEYS,
+    PROGRESS_CHIP,
     PROGRESS_FINAL,
     PROGRESS_FINAL_STEP,
     PROGRESS_KEY,
@@ -259,6 +263,11 @@ class ApplianceWatcher:
             "mobile_push_notification_tag": self.tag,
             "live_update": True,
             "notification_icon": self.icon,
+            # Android only, iOS ignores them: a channel of its own so the start sounds, and kept when tapped as
+            # a Live Activity is, since otherwise the next update brings it back as a new, sounding, notification
+            "channel": ANDROID_CHANNEL,
+            "importance": "high",
+            "sticky": True,
         } | self._tap_data()
         progress = self._progress()
         if progress is not None:
@@ -269,6 +278,10 @@ class ApplianceWatcher:
         if finish_time is not None:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
+        elif progress is not None:
+            # the Android status bar chip shows this in place of the time left, so only with no time to show, and
+            # short, since a longer text leaves the chip with only its icon
+            data["critical_text"] = PROGRESS_CHIP.format(progress=progress)
         return data
 
     async def _supernotify(
@@ -552,6 +565,13 @@ class PowerWatcher(ApplianceWatcher):
         self.power_entity_id: str = entry.options[CONF_POWER_ENTITY]
         self.threshold: float = entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
         self.grace_period: float = entry.options.get(CONF_GRACE_PERIOD, DEFAULT_GRACE_PERIOD)
+        self.min_duration: float = entry.options.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)
+        # power drawn, but not yet for long enough to count as a cycle
+        self.pending: bool = False
+        self._drawn_for: float = 0
+        self._drawing_since: datetime | None = None
+        self._cancel_end: CALLBACK_TYPE | None = None
+        self._cancel_start: CALLBACK_TYPE | None = None
 
     @callback
     def async_start(self) -> None:
@@ -559,6 +579,7 @@ class PowerWatcher(ApplianceWatcher):
         self.running = self._drawing(self.hass.states.get(self.power_entity_id)) is True
         self.entry.async_on_unload(async_track_state_change_event(self.hass, self.power_entity_id, self._power_changed))
         self.entry.async_on_unload(self._keep_running)
+        self.entry.async_on_unload(self._stop_counting)
 
     def _drawing(self, state: State | None) -> bool | None:
         """Whether more power than the threshold is drawn, None if the power isn't known"""
@@ -575,19 +596,64 @@ class PowerWatcher(ApplianceWatcher):
 
     async def _power_changed(self, event: Event[EventStateChangedData]) -> None:
         drawing = self._drawing(event.data["new_state"])
-        _LOGGER.debug("APPLIANCES %s drawing power %s, running: %s", self.name, drawing, self.running)
+        _LOGGER.debug(
+            "APPLIANCES %s drawing power %s, running: %s, pending: %s", self.name, drawing, self.running, self.pending
+        )
         if drawing is None:
             # `unavailable` while the power monitor is away leaves the cycle as it was
             return
         if drawing:
             self._keep_running()
-            if not self.running:
-                self.running = True
-                await self._started()
-        elif self.running and self._cancel_end is None:
-            self._cancel_end = async_call_later(self.hass, self.grace_period, self._grace_over)
+            if self.running:
+                return
+            if not self.pending:
+                self.pending = True
+                self._drawn_for = 0
+            if self._drawing_since is None:
+                # time above the threshold adds up across drop outs, so one in the first minute doesn't start it over
+                self._drawing_since = dt_util.utcnow()
+                remaining = self.min_duration - self._drawn_for
+                if remaining > 0:
+                    self._cancel_start = async_call_later(self.hass, remaining, self._long_enough)
+                else:
+                    await self._confirmed()
+        elif self.running or self.pending:
+            self._stop_counting()
+            if self._cancel_end is None:
+                self._cancel_end = async_call_later(self.hass, self.grace_period, self._grace_over)
+
+    @callback
+    def _keep_running(self) -> None:
+        if self._cancel_end is not None:
+            self._cancel_end()
+            self._cancel_end = None
+
+    @callback
+    def _stop_counting(self) -> None:
+        """Add up the time above the threshold so far, while it isn't yet a cycle"""
+        if self._drawing_since is not None:
+            self._drawn_for += (dt_util.utcnow() - self._drawing_since).total_seconds()
+            self._drawing_since = None
+        if self._cancel_start is not None:
+            self._cancel_start()
+            self._cancel_start = None
+
+    async def _long_enough(self, now: datetime) -> None:
+        self._cancel_start = None
+        await self._confirmed()
+
+    async def _confirmed(self) -> None:
+        self.pending = False
+        self._drawing_since = None
+        self.running = True
+        await self._started()
 
     async def _grace_over(self, now: datetime) -> None:
         self._cancel_end = None
+        if self.pending:
+            _LOGGER.debug("APPLIANCES %s drew power for %.0fs, too short for a cycle", self.name, self._drawn_for)
+            self.pending = False
+            self._drawn_for = 0
+            return
         self.running = False
         await self._ended(finished=True)
