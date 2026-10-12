@@ -61,8 +61,12 @@ An appliance with no supported integration can be added if a sensor measures the
 | --------------- | ---------- | ----------------------------------------------------------------------------------------- |
 | Power threshold | 1 W        | The appliance is running while it draws more than this                                    |
 | Grace period    | 60 seconds | How long power must stay at or below the threshold before the cycle is over, so short drop outs are ignored |
+| Minimum running time | 0 seconds | How long power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored |
 
-Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking.
+Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking. Set a minimum running time,
+60 seconds or so, for appliances that draw a little power when their door is opened or a button pressed, such as a
+dishwasher whose light comes on, so that isn't notified as a cycle. Time above the threshold adds up across drop outs
+shorter than the grace period, so a cycle that pauses as it starts still counts.
 
 ## Settings
 
