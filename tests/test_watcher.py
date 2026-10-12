@@ -877,6 +877,8 @@ async def test_power_not_yet_a_cycle_when_unloaded(hass: HomeAssistant, freezer)
     freezer.tick(120)
     await pass_time(hass, 0)
     assert not calls
+
+
 async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
     calls = mock_supernotify(hass)
     hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
