@@ -1,8 +1,10 @@
-# Android and iOS: what the phone shows, and why the payload looks like it does
+# Mobile Platforms
 
-One payload is sent to every phone, through Supernotify's `mobile_push` delivery, and each Companion App picks out
-the fields it knows. This page covers what each platform does with every field the integration sends or could send,
-where the result shows up, what the user can change on the phone, and the limits on delivery, so that both get the
+## Android and iOS
+
+### What the phone shows, and why the payload looks like it does
+
+One payload is sent to every phone, through Supernotify's `mobile_push` delivery, and each Companion App picks out the fields it knows. This page covers what each platform does with every field the integration sends or could send, where the result shows up, what the user can change on the phone, and the limits on delivery, so that both get the
 most out of one payload without anything platform specific in the code.
 
 ## Sources
