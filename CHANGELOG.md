@@ -1,6 +1,15 @@
 ---
 title: What's New
 ---
+# 0.7.0
+## ✨ Enhancements
+- Power monitored appliances can now have a minimum time to run, as well as wattage, to trigger start of a cycle
+- Action buttons now to acknowledge end of a cycle or ask for reminder later, e.g. to empty the washing machine
+## 🐛 Fixes
+- An appliance that is `ready` for a moment and then running again, as an oven is when it starts or has its settings changed, is the same cycle rather than one finished and another started. One left `ready` is finished after 10 seconds
+- The start and end notifications are no longer dropped by Supernotify as repeats when a cycle follows soon after another, which left the second cycle with no Live Activity
+- An oven switched off before it's up to heat is no longer told of as pre-heated, Home Connect reporting pre-heating finished as it goes off
+
 # 0.6.1
 ## 📝 Other changes
 Package naming consistency and auto build

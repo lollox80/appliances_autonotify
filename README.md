@@ -120,6 +120,8 @@ used instead, as in "Washer" or "Kettle".
 
 - If the appliance never reports the end of its cycle, the Live Activity stays on the phone until dismissed
 - If Home Assistant restarts mid-cycle, the end is still notified and the Live Activity closed
+- An appliance that stops without saying it has finished or been switched off is taken to be finished 10 seconds later, in case it carries on, as an oven does when its settings are changed
+- An oven has no pre-heating bar until Home Connect first reports its temperature, which isn't known after a restart of Home Assistant until the oven is next heating
 - Progress, time remaining and the program are only shown where the appliance reports them, so never for a power monitored appliance
 - If Home Assistant restarts while an oven is on, it isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature
 - An oven with no timer set reports its progress as 100%, so that is what the bar shows once it's up to heat

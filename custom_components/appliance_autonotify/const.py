@@ -83,14 +83,20 @@ ENTITY_DOMAINS: Final[dict[str, str]] = {
 }
 # degrees between Live Activity updates of an oven up to heat, whose temperature never stops wandering
 TEMPERATURE_STEP: Final[float] = 5
+# seconds before an oven saying it's up to heat is believed, since one switched off says so too, just before it's off
+PREHEAT_SETTLE: Final[float] = 3
 # an event sensor is `off` until whatever it tells of has happened
 STATES_EVENT_ON: Final[tuple[str, ...]] = ("present", "confirmed", "on")
 
 STATE_RUN: Final[str] = "run"
 # a cycle already under way, so not a new start when `run` follows
 STATES_ACTIVE: Final[tuple[str, ...]] = ("run", "pause", "actionrequired")
-# the cycle is over, an oven switched off goes straight from `run` to `ready` or `inactive` without ever being `finished`
-STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "ready", "inactive")
+# the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`
+STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive")
+# over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed
+STATES_SETTLING: Final[tuple[str, ...]] = ("ready",)
+# seconds an appliance is left to settle before the cycle is over
+CYCLE_SETTLE: Final[float] = 10
 # the cycle is over without finishing, so the Live Activity goes without an end notification
 STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting")
 
