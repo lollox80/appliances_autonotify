@@ -39,6 +39,8 @@ CONF_GRACE_PERIOD: Final[str] = "grace_period"
 CONF_MIN_DURATION: Final[str] = "min_duration"
 # the smart plug the appliance is on, offered as a button to switch off once it has finished
 CONF_SWITCH_ENTITY: Final[str] = "switch_entity"
+# whether that button is offered, for a plug chosen but better left on
+CONF_SWITCH_OFF_BUTTON: Final[str] = "switch_off_button"
 # watts above which the appliance is running
 DEFAULT_THRESHOLD: Final[float] = 1
 # seconds at or below the threshold before the cycle is over, so short drop outs are ignored
@@ -54,19 +56,21 @@ DEFAULT_START_MESSAGE: Final[str] = "{name} started"
 DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
 PROGRESS_MESSAGE: Final[str] = "{progress}% complete"
 
-# minutes after which the end is told again, for as long as nobody says the appliance has been emptied
+# minutes after which the end is told again, for as long as nobody says the appliance has been seen to
 CONF_REMINDER: Final[str] = "reminder"
-REMINDER_LIMIT: Final[int] = 3
-# minutes for Remind me, when no reminder is set
+# how many times it's told again
+CONF_REMINDER_REPEATS: Final[str] = "reminder_repeats"
+DEFAULT_REMINDER_REPEATS: Final[int] = 3
+# minutes for Remind Later, when no reminder is set
 DEFAULT_SNOOZE: Final[int] = 30
 # buttons on the end notification, each followed by the entry id of the appliance
-ACTION_EMPTIED: Final[str] = "APPLIANCE_EMPTIED_"
+ACTION_FINISHED: Final[str] = "APPLIANCE_FINISHED_"
 ACTION_REMIND: Final[str] = "APPLIANCE_REMIND_"
 ACTION_SWITCH_OFF: Final[str] = "APPLIANCE_SWITCH_OFF_"
 # by the language of Home Assistant, English for any other
 ACTION_TITLES: Final[dict[str, dict[str, str]]] = {
-    "en": {ACTION_EMPTIED: "Emptied", ACTION_REMIND: "Remind me in {minutes} min", ACTION_SWITCH_OFF: "Switch off"},
-    "it": {ACTION_EMPTIED: "Svuotata", ACTION_REMIND: "Ricordamelo tra {minutes} min", ACTION_SWITCH_OFF: "Spegni presa"},
+    "en": {ACTION_FINISHED: "Finished", ACTION_REMIND: "Remind Later", ACTION_SWITCH_OFF: "Switch Off"},
+    "it": {ACTION_FINISHED: "Finito", ACTION_REMIND: "Ricordamelo dopo", ACTION_SWITCH_OFF: "Spegni presa"},
 }
 MOBILE_ACTION_EVENT: Final[str] = "mobile_app_notification_action"
 # the text of the Android status bar chip, which shows it in full only up to about 7 characters

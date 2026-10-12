@@ -1,6 +1,15 @@
 ---
 title: What's New
 ---
+# 0.7.1
+## ✨ Enhancements
+- Action buttons now at the end of a cycle, to mark it as finished (you've emptied the dishwasher, taken out the pie), remind later, or for switchable power monitors only, switch off the plug
+- The buttons are now *Finished*, *Remind Later* and *Switch Off*
+- *Reminder repeats* setting for how many times the end is sent again, 3 unless changed
+- *Switch Off button* setting for a power monitored appliance, to leave the button off the end notification for a smart plug that should stay on. The button is also left off where the smart plug chosen no longer exists
+  - Actions can be tuned in the integration settings page
+  - Supernotify is required for actions (`notify.send_message` maxes out at a message field)
+
 # 0.7.0
 ## ✨ Enhancements
 - Power monitored appliances can now have a minimum time to run, as well as wattage, to trigger start of a cycle

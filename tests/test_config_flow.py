@@ -181,14 +181,16 @@ async def test_power_flow(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "power"
     defaults = {str(k): k.default() for k in result["data_schema"].schema if k.default is not vol.UNDEFINED}
-    assert defaults == {"threshold": 1, "grace_period": 60, "min_duration": 0}
+    assert defaults == {"threshold": 1, "grace_period": 60, "min_duration": 0, "switch_off_button": True}
 
     power = {"power_entity": "sensor.washer_power", "threshold": 5, "grace_period": 60, "min_duration": 60}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"name": "Washer", **power})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Washer"
     assert result["data"] == {"type": "power"}
-    assert result["options"] == power
+    # the button to switch off a smart plug is there unless turned off, and only once there's a plug
+    stored = power | {"switch_off_button": True}
+    assert result["options"] == stored
     await hass.async_block_till_done()
     entry = result["result"]
     assert entry.runtime_data.power_entity_id == "sensor.washer_power"
@@ -208,12 +210,14 @@ async def test_power_flow(hass: HomeAssistant) -> None:
     )
     assert result["step_id"] == "power"
     assert "name" not in result["data_schema"].schema
-    assert suggested(result) == power
-    result = await hass.config_entries.options.async_configure(result["flow_id"], power | {"threshold": 3})
+    assert suggested(result) == stored
+    plug = {"switch_entity": "switch.washer_plug", "switch_off_button": False}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], power | plug | {"threshold": 3})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert entry.options == {"end_message": "Hang out the washing", **power, "threshold": 3}
+    assert entry.options == {"end_message": "Hang out the washing", **power, **plug, "threshold": 3}
     assert entry.runtime_data.threshold == 3
+    assert entry.runtime_data.switch_entity_id is None
 
 
 async def test_settings_without_supernotify(hass: HomeAssistant) -> None:
@@ -285,7 +289,7 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
     assert list(notify) == ["target", "custom_target", "deliveries"]
     # reminders and buttons on the end need Supernotify, so are only offered with it
     end = next(v for k, v in result["data_schema"].schema.items() if k == "end").schema.schema
-    assert list(end) == ["end_title", "end_message", "reminder"]
+    assert list(end) == ["end_title", "end_message", "reminder", "reminder_repeats"]
     assert notify["deliveries"].config["options"] == ["chimes", "email", "mobile_push", "phones"]
 
     settings = {"target": {"entity_id": ["person.joe"]}, "custom_target": ["joe@example.com"], "deliveries": ["phones"]}
@@ -311,6 +315,20 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
     assert "notify_end" not in suggested(result)
     assert suggested(result)["target"] == {"entity_id": ["person.joe"]}
     assert suggested(result)["deliveries"] == ["phones"]
+
+    # reminders are tuned by how long between them and how many, the usual number of them not being a setting
+    form = {"notify_start": False, "notify_progress": True, "start": {}, "notify": settings}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], form | {"end": {"reminder": 15, "reminder_repeats": 5}}
+    )
+    await hass.async_block_till_done()
+    assert (entry.options["reminder"], entry.options["reminder_repeats"]) == (15, 5)
+    assert (entry.runtime_data.reminder, entry.runtime_data.reminder_repeats) == (15, 5)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], form | {"end": {"reminder": 15}})
+    await hass.async_block_till_done()
+    assert "reminder_repeats" not in entry.options
+    assert entry.runtime_data.reminder_repeats == 3
 
 
 async def test_phases_are_notified_for_an_oven_unless_turned_off(hass: HomeAssistant) -> None:

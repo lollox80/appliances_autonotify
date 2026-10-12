@@ -21,7 +21,8 @@
                     "threshold": "Power threshold",
                     "grace_period": "Grace period",
                     "min_duration": "Minimum running time",
-                    "switch_entity": "Smart plug"
+                    "switch_entity": "Smart plug",
+                    "switch_off_button": "Switch Off button"
                 },
                 "data_description": {
                     "name": "Used in notifications, and to choose an icon",
@@ -29,7 +30,8 @@
                     "threshold": "The appliance is running while it draws more than this",
                     "grace_period": "How long the power must stay at or below the threshold before the cycle is over, so short drop outs are ignored",
                     "min_duration": "How long the power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored",
-                    "switch_entity": "The switch the appliance is plugged into, offered as a button to switch it off once it has finished"
+                    "switch_entity": "The switch the appliance is plugged into, offered as a button to switch it off once it has finished",
+                    "switch_off_button": "Put a Switch Off button for the smart plug on the end notification. Turn off for a plug that should stay on."
                 }
             },
             "confirm": {
@@ -86,10 +88,12 @@
                         "data": {
                             "end_title": "Title",
                             "end_message": "Message",
-                            "reminder": "Reminder"
+                            "reminder": "Reminder",
+                            "reminder_repeats": "Reminder repeats"
                         },
                         "data_description": {
-                            "reminder": "Minutes after which the end is sent again, up to 3 times, until Emptied is pressed on the notification. 0 for none. Remind me on the notification waits this long, or 30 minutes."
+                            "reminder": "Minutes after which the end is sent again, until Finished is pressed on the notification. 0 for none. Remind Later on the notification waits this long, or 30 minutes.",
+                            "reminder_repeats": "How many times the end is sent again"
                         }
                     },
                     "notify": {
@@ -118,14 +122,16 @@
                     "threshold": "Power threshold",
                     "grace_period": "Grace period",
                     "min_duration": "Minimum running time",
-                    "switch_entity": "Smart plug"
+                    "switch_entity": "Smart plug",
+                    "switch_off_button": "Switch Off button"
                 },
                 "data_description": {
                     "power_entity": "The sensor measuring the power drawn by the appliance",
                     "threshold": "The appliance is running while it draws more than this",
                     "grace_period": "How long the power must stay at or below the threshold before the cycle is over, so short drop outs are ignored",
                     "min_duration": "How long the power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored",
-                    "switch_entity": "The switch the appliance is plugged into, offered as a button to switch it off once it has finished"
+                    "switch_entity": "The switch the appliance is plugged into, offered as a button to switch it off once it has finished",
+                    "switch_off_button": "Put a Switch Off button for the smart plug on the end notification. Turn off for a plug that should stay on."
                 }
             }
         }

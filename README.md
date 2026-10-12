@@ -104,18 +104,15 @@ counts as finished.
 
 ### Buttons on the End Notification
 
-With Supernotify, the end notification has buttons, in the language of Home Assistant where there's a translation
-(English and Italian so far):
+With Supernotify, the end notification has buttons, in the language of Home Assistant where there's a translation (English and Italian so far):
 
 | Button         | What it does                                                                                 |
 | -------------- | -------------------------------------------------------------------------------------------- |
-| Emptied        | Clears the notification, and stops any reminder                                              |
-| Remind me      | Sends the end notification again later, after the *Reminder* minutes or, with none set, 30   |
-| Switch off     | Only with a *Smart plug* chosen, for a power monitored appliance. Switches it off, unless a new cycle has started since |
+| Finished       | Acknowledges and clears the notification, and stops any reminder                                              |
+| Remind Later   | Sends the end notification again later, after the *Reminder* minutes or, with none set, 30   |
+| Switch Off     | Only for a power monitored appliance with a *Smart plug* chosen, and the *Switch Off button* setting left on. Switches it off, unless a new cycle has started since |
 
-With a *Reminder* set in the *End message* section, the end notification is sent again after that many minutes,
-up to 3 times, until *Emptied* is pressed or the next cycle starts. Supernotify adds the buttons of its own scenarios
-after these, and Android shows only the first 3.
+With a *Reminder* set in the *End message* section, the end notification is sent again after that many minutes, up to the *Reminder repeats* times, 3 unless changed, until *Finished* is pressed or the next cycle starts. Supernotify adds the buttons of its own scenarios after these, and Android shows only the first 3.
 
 ### Oven Pre-heating
 

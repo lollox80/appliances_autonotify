@@ -25,7 +25,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import PowerConverter
 
 from .const import (
-    ACTION_EMPTIED,
+    ACTION_FINISHED,
     ACTION_REMIND,
     ACTION_SWITCH_OFF,
     ACTION_TITLES,
@@ -45,9 +45,11 @@ from .const import (
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
     CONF_REMINDER,
+    CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
     CONF_START_TITLE,
     CONF_SWITCH_ENTITY,
+    CONF_SWITCH_OFF_BUTTON,
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
@@ -57,6 +59,7 @@ from .const import (
     DEFAULT_GRACE_PERIOD,
     DEFAULT_ICON,
     DEFAULT_MIN_DURATION,
+    DEFAULT_REMINDER_REPEATS,
     DEFAULT_SNOOZE,
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
@@ -84,7 +87,6 @@ from .const import (
     PROGRESS_KEY,
     PROGRESS_MESSAGE,
     PROGRESS_STEP,
-    REMINDER_LIMIT,
     STATE_RUN,
     STATES_ABANDONED,
     STATES_ACTIVE,
@@ -133,7 +135,9 @@ class ApplianceWatcher:
         # one notification at a time, so a progress update can't overtake the end and reopen the Live Activity
         self._sending: asyncio.Lock = asyncio.Lock()
         self.reminder: float = entry.options.get(CONF_REMINDER, 0)
-        self.switch_entity_id: str | None = entry.options.get(CONF_SWITCH_ENTITY)
+        self.reminder_repeats: int = int(entry.options.get(CONF_REMINDER_REPEATS, DEFAULT_REMINDER_REPEATS))
+        # the smart plug to switch off from the end notification, which only a power monitored appliance has
+        self.switch_entity_id: str | None = None
         self._reminders_sent: int = 0
         self._cancel_reminder: CALLBACK_TYPE | None = None
         # the end of the cycle, waiting to see that the appliance doesn't carry on
@@ -236,7 +240,7 @@ class ApplianceWatcher:
                     self._remind_in(self.reminder)
 
     async def _tell_end(self, resend: bool = False) -> None:
-        """The end, with buttons to say the appliance has been emptied, to be reminded later, or to switch it off"""
+        """The end, with buttons to say the appliance has been seen to, to be reminded later, or to switch it off"""
         await self._supernotify(
             self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
             self._text(CONF_END_TITLE, DEFAULT_TITLE),
@@ -247,11 +251,12 @@ class ApplianceWatcher:
 
     def _end_actions(self) -> list[dict[str, str]]:
         titles = ACTION_TITLES.get(self.hass.config.language.split("-")[0], ACTION_TITLES["en"])
-        buttons = [ACTION_EMPTIED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self.switch_entity_id else [])
-        return [
-            {"action": f"{button}{self.entry.entry_id}", "title": titles[button].format(minutes=self._snooze_minutes())}
-            for button in buttons
-        ]
+        buttons = [ACTION_FINISHED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self._switchable() else [])
+        return [{"action": f"{button}{self.entry.entry_id}", "title": titles[button]} for button in buttons]
+
+    def _switchable(self) -> bool:
+        """Whether there's a smart plug to switch off, one chosen and since removed not being offered"""
+        return self.switch_entity_id is not None and self.hass.states.get(self.switch_entity_id) is not None
 
     def _snooze_minutes(self) -> int:
         return int(self.reminder or DEFAULT_SNOOZE)
@@ -272,12 +277,12 @@ class ApplianceWatcher:
         self._reminders_sent += 1
         # Supernotify would drop the same message again as a duplicate
         await self._tell_end(resend=True)
-        if self.reminder and self._reminders_sent < REMINDER_LIMIT:
+        if self.reminder and self._reminders_sent < self.reminder_repeats:
             self._remind_in(self.reminder)
 
     async def _action_pressed(self, event: Event) -> None:
         action = str(event.data.get("action") or "")
-        if action == f"{ACTION_EMPTIED}{self.entry.entry_id}":
+        if action == f"{ACTION_FINISHED}{self.entry.entry_id}":
             self._stop_reminding()
             await self._supernotify(
                 self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
@@ -287,7 +292,7 @@ class ApplianceWatcher:
             )
         elif action == f"{ACTION_REMIND}{self.entry.entry_id}":
             self._remind_in(self._snooze_minutes())
-        elif action == f"{ACTION_SWITCH_OFF}{self.entry.entry_id}" and self.switch_entity_id:
+        elif action == f"{ACTION_SWITCH_OFF}{self.entry.entry_id}" and self._switchable():
             if self.running:
                 # a button left from the last cycle, pressed once the next one has started
                 _LOGGER.warning("APPLIANCES %s is running again, so it was left switched on", self.name)
@@ -657,6 +662,8 @@ class PowerWatcher(ApplianceWatcher):
         self.threshold: float = entry.options.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
         self.grace_period: float = entry.options.get(CONF_GRACE_PERIOD, DEFAULT_GRACE_PERIOD)
         self.min_duration: float = entry.options.get(CONF_MIN_DURATION, DEFAULT_MIN_DURATION)
+        if entry.options.get(CONF_SWITCH_OFF_BUTTON, True):
+            self.switch_entity_id = entry.options.get(CONF_SWITCH_ENTITY)
         # power drawn, but not yet for long enough to count as a cycle
         self.pending: bool = False
         self._drawn_for: float = 0

@@ -40,15 +40,18 @@ from .const import (
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
     CONF_REMINDER,
+    CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
     CONF_START_TITLE,
     CONF_SWITCH_ENTITY,
+    CONF_SWITCH_OFF_BUTTON,
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_MIN_DURATION,
+    DEFAULT_REMINDER_REPEATS,
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
@@ -121,6 +124,9 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
         end[vol.Optional(CONF_REMINDER)] = NumberSelector(
             NumberSelectorConfig(min=0, max=720, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.MINUTES)
         )
+        end[vol.Required(CONF_REMINDER_REPEATS, default=DEFAULT_REMINDER_REPEATS)] = NumberSelector(
+            NumberSelectorConfig(min=1, max=20, step=1, mode=NumberSelectorMode.BOX)
+        )
     else:
         notify[vol.Optional(CONF_TARGETS)] = EntitySelector(EntitySelectorConfig(domain="notify", multiple=True))
     sections: dict[str, dict[vol.Marker, Any]] = {
@@ -172,6 +178,7 @@ def power_schema(with_name: bool) -> vol.Schema:
         NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS)
     )
     fields[vol.Optional(CONF_SWITCH_ENTITY)] = EntitySelector(EntitySelectorConfig(domain="switch"))
+    fields[vol.Required(CONF_SWITCH_OFF_BUTTON, default=True)] = BooleanSelector()
     return vol.Schema(fields)
 
 
@@ -277,7 +284,11 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
         defaults = {key: text.replace(NAME_PLACEHOLDER, name) for key, text in DEFAULT_TEXTS.items()}
         if user_input is not None:
             # text left as the default isn't a setting, so it goes on following the name of the appliance
-            unset = defaults | DEFAULT_SWITCHES | {CONF_NOTIFY_PHASE: self._phase_default()}
+            unset = (
+                defaults
+                | DEFAULT_SWITCHES
+                | {CONF_NOTIFY_PHASE: self._phase_default(), CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS}
+            )
             settings = {
                 key: value
                 for key, value in flattened(user_input).items()
