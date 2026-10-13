@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_DEVICE_ID
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import Context, HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
@@ -1233,3 +1233,83 @@ async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
     await setup_power_watcher(hass, "Lavastoviglie cucina")
     await set_state(hass, "sensor.washer_power", "1800")
     assert calls[0].data["extra_data"]["notification_icon"] == "mdi:dishwasher"
+
+
+async def test_context_passed_on_from_the_state_change(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    enquiries = async_mock_service(
+        hass,
+        "supernotify",
+        "enquire_implicit_deliveries",
+        response={"mobile_push": ["mobile_push"]},
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_mock_service(
+        hass, "supernotify", "enquire_configuration", response={"delivery": {}}, supports_response=SupportsResponse.ONLY
+    )
+    calls = async_mock_service(hass, "supernotify", "notify")
+    await setup_watcher(hass, appliance)
+
+    started, finished = Context(), Context()
+    hass.states.async_set(appliance.cycle, "run", context=started)
+    await hass.async_block_till_done()
+    assert [call.context for call in calls] == [started]
+
+    # the Live Activity cleared and the end told, and the deliveries looked up on the way, all for the one change
+    hass.states.async_set(appliance.cycle, "finished", context=finished)
+    await hass.async_block_till_done()
+    assert [call.context for call in calls[1:]] == [finished, finished]
+    assert enquiries[-1].context == finished
+
+
+async def test_context_passed_on_without_supernotify(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    await setup_watcher(hass, appliance, {"targets": ["notify.phone"]})
+    calls = async_mock_service(hass, "notify", "send_message")
+    await set_state(hass, appliance.cycle, "run")
+
+    finished = Context()
+    hass.states.async_set(appliance.cycle, "finished", context=finished)
+    await hass.async_block_till_done()
+    assert [call.context for call in calls] == [finished]
+
+
+async def test_context_of_its_own_when_a_timer_ends_the_cycle(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, reminder=20)
+    dropped = Context()
+    await set_state(hass, "sensor.washer_power", "1800")
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"}, context=dropped)
+    freezer.tick(60)
+    await pass_time(hass, 0)
+
+    # one new context for all that the timer set off, leading back to the change that set it
+    assert len(calls) == 3
+    assert calls[1].context == calls[2].context
+    assert calls[1].context not in (dropped, calls[0].context)
+    assert calls[1].context.parent_id == dropped.id
+
+    # and another for the reminder, a timer later, leading back to the end it reminds of
+    freezer.tick(20 * 60)
+    await pass_time(hass, 0)
+    assert len(calls) == 4
+    assert calls[3].context.parent_id == calls[1].context.id
+
+
+async def test_context_passed_on_from_a_button(hass: HomeAssistant, freezer) -> None:
+    calls = mock_supernotify(hass)
+    switched = async_mock_service(hass, "switch", "turn_off")
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    hass.states.async_set("switch.washer_plug", "on")
+    entry = await setup_power_watcher(hass, switch_entity="switch.washer_plug")
+    await finish_power_cycle(hass, freezer)
+
+    pressed = Context(user_id="someone")
+    for action in ("SWITCH_OFF", "FINISHED"):
+        hass.bus.async_fire(
+            "mobile_app_notification_action", {"action": f"APPLIANCE_{action}_{entry.entry_id}"}, context=pressed
+        )
+        await hass.async_block_till_done()
+    assert switched[0].context == pressed
+    assert calls[-1].context == pressed

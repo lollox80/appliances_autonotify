@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import (
@@ -15,7 +16,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
     UnitOfPower,
 )
-from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.core import CALLBACK_TYPE, Context, Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -114,6 +115,11 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+def _later(context: Context) -> Context:
+    """A context of its own for what a timer sets off, leading back to whatever set the timer"""
+    return Context(parent_id=context.id)
+
+
 class ApplianceWatcher:
     """The notifications of a cycle, for subclasses that know when one starts and ends"""
 
@@ -197,28 +203,28 @@ class ApplianceWatcher:
             if live and not ordinary:
                 # the bar already shows how far along it is, so there's room to say what it's doing
                 message = self._phase() or message
-            await self._tell(message, ordinary, resend=True)
+            await self._tell(message, ordinary, event.context, resend=True)
 
-    async def _started(self) -> None:
+    async def _started(self, context: Context) -> None:
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
         async with self._sending:
             # resent, since to Supernotify a second cycle soon after the first is a repeat to be dropped
-            await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start, resend=True)
+            await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start, context, resend=True)
             if supernotify_available(self.hass):
                 # whatever comes next waits its turn, the first progress being only moments behind the start
                 await asyncio.sleep(LIVE_SETTLE)
 
-    async def _tell(self, message: str, ordinary: bool, resend: bool = False) -> None:
+    async def _tell(self, message: str, ordinary: bool, context: Context, resend: bool = False) -> None:
         """Notify of a cycle under way, either everywhere or with no more than its Live Activity brought up to date"""
         # a Live Activity keeps the title it started with
         title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
         if not supernotify_available(self.hass):
             if ordinary:
-                await self._send_message(message, title)
+                await self._send_message(message, title, context)
         elif ordinary:
             # everywhere, opening or updating the Live Activity on phones as it goes
-            await self._supernotify(message, title, resend=resend, extra_data=self._live_data())
+            await self._supernotify(message, title, context, resend=resend, extra_data=self._live_data())
         else:
             data = self._live_data()
             if self.program_in_title and "when" in data and (phase := self._phase()) and phase not in title:
@@ -227,36 +233,40 @@ class ApplianceWatcher:
                 if message == phase and (progress := self._progress()) is not None:
                     message = self._progress_message(progress)
             # with nothing to hear, and nothing sent anywhere but to phones
-            await self._supernotify(message, title, mobile_only=True, extra_data=data | {"silent": True, "alert_once": True})
+            await self._supernotify(
+                message, title, context, mobile_only=True, extra_data=data | {"silent": True, "alert_once": True}
+            )
 
-    async def _ended(self, finished: bool) -> None:
+    async def _ended(self, finished: bool, context: Context) -> None:
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
         notify = finished and self.notify_end
         async with self._sending:
             if not supernotify_available(self.hass):
                 if notify:
-                    await self._send_message(message, title)
+                    await self._send_message(message, title, context)
                 return
             # closing the Live Activity is not a notification in itself, so the end is told separately
             await self._supernotify(
                 message,
                 title,
+                context,
                 mobile_only=True,
                 extra_data={"mobile_push_notification_tag": self.tag, "mobile_push_clear_notification": True},
             )
             if notify:
                 # the same end message as the last cycle would otherwise be dropped as a duplicate
-                await self._tell_end(resend=True)
+                await self._tell_end(context, resend=True)
                 self._reminders_sent = 0
                 if self.reminder:
-                    self._remind_in(self.reminder)
+                    self._remind_in(self.reminder, context)
 
-    async def _tell_end(self, resend: bool = False) -> None:
+    async def _tell_end(self, context: Context, resend: bool = False) -> None:
         """The end, with buttons to say the appliance has been seen to, to be reminded later, or to switch it off"""
         await self._supernotify(
             self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
             self._text(CONF_END_TITLE, DEFAULT_TITLE),
+            context,
             resend=resend,
             actions=self._end_actions(),
             extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag} | self._tap_data(),
@@ -275,9 +285,9 @@ class ApplianceWatcher:
         return int(self.reminder or DEFAULT_SNOOZE)
 
     @callback
-    def _remind_in(self, minutes: float) -> None:
+    def _remind_in(self, minutes: float, context: Context) -> None:
         self._stop_reminding()
-        self._cancel_reminder = async_call_later(self.hass, minutes * 60, self._remind)
+        self._cancel_reminder = async_call_later(self.hass, minutes * 60, partial(self._remind, context))
 
     @callback
     def _stop_reminding(self) -> None:
@@ -285,13 +295,13 @@ class ApplianceWatcher:
             self._cancel_reminder()
             self._cancel_reminder = None
 
-    async def _remind(self, now: datetime) -> None:
+    async def _remind(self, context: Context, now: datetime) -> None:
         self._cancel_reminder = None
         self._reminders_sent += 1
         # Supernotify would drop the same message again as a duplicate
-        await self._tell_end(resend=True)
+        await self._tell_end(_later(context), resend=True)
         if self.reminder and self._reminders_sent < self.reminder_repeats:
-            self._remind_in(self.reminder)
+            self._remind_in(self.reminder, context)
 
     async def _action_pressed(self, event: Event) -> None:
         action = str(event.data.get("action") or "")
@@ -300,11 +310,12 @@ class ApplianceWatcher:
             await self._supernotify(
                 self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
                 self._text(CONF_END_TITLE, DEFAULT_TITLE),
+                event.context,
                 mobile_only=True,
                 extra_data={"mobile_push_notification_tag": self.end_tag, "mobile_push_clear_notification": True},
             )
         elif action == f"{ACTION_REMIND}{self.entry.entry_id}":
-            self._remind_in(self._snooze_minutes())
+            self._remind_in(self._snooze_minutes(), event.context)
         elif action == f"{ACTION_SWITCH_OFF}{self.entry.entry_id}" and self._switchable():
             if self.running:
                 # a button left from the last cycle, pressed once the next one has started
@@ -312,7 +323,7 @@ class ApplianceWatcher:
                 return
             try:
                 await self.hass.services.async_call(
-                    "switch", "turn_off", {ATTR_ENTITY_ID: self.switch_entity_id}, blocking=True
+                    "switch", "turn_off", {ATTR_ENTITY_ID: self.switch_entity_id}, blocking=True, context=event.context
                 )
             except HomeAssistantError:
                 _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
@@ -399,6 +410,7 @@ class ApplianceWatcher:
         self,
         message: str,
         title: str,
+        context: Context,
         mobile_only: bool = False,
         resend: bool = False,
         extra_data: dict[str, Any] | None = None,
@@ -413,7 +425,7 @@ class ApplianceWatcher:
         deliveries: list[str] = list(self.entry.options.get(CONF_DELIVERIES) or [])
         try:
             if mobile_only:
-                mobile = (await deliveries_by_transport(self.hass)).get(MOBILE_PUSH_TRANSPORT, [])
+                mobile = (await deliveries_by_transport(self.hass, context)).get(MOBILE_PUSH_TRANSPORT, [])
                 deliveries = [d for d in mobile if not deliveries or d in deliveries]
                 if not deliveries:
                     _LOGGER.warning("APPLIANCES No mobile push delivery found for %s, Live Activity not updated", self.name)
@@ -429,11 +441,11 @@ class ApplianceWatcher:
                     data[key] = value
             if extra_data:
                 data["extra_data"] = extra_data
-            await self.hass.services.async_call(SUPERNOTIFY_DOMAIN, "notify", data, blocking=True)
+            await self.hass.services.async_call(SUPERNOTIFY_DOMAIN, "notify", data, blocking=True, context=context)
         except HomeAssistantError:
             _LOGGER.exception("APPLIANCES Supernotify notification failed for %s", self.name)
 
-    async def _send_message(self, message: str, title: str) -> None:
+    async def _send_message(self, message: str, title: str, context: Context) -> None:
         # with none chosen, every phone with the mobile app is told
         targets: list[str] = self.entry.options.get(CONF_TARGETS) or [
             entity.entity_id
@@ -449,6 +461,7 @@ class ApplianceWatcher:
                 "send_message",
                 {ATTR_ENTITY_ID: targets, "message": message, "title": title},
                 blocking=True,
+                context=context,
             )
         except HomeAssistantError:
             _LOGGER.exception("APPLIANCES Notification failed for %s", self.name)
@@ -559,7 +572,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         if not self.running:
             return
         if self.preheated:
-            await self._temperature_shown()
+            await self._temperature_shown(event.context)
             return
         temperatures = self._temperatures()
         if temperatures is None:
@@ -571,7 +584,7 @@ class HomeConnectWatcher(ApplianceWatcher):
                 self.last_progress_mark = -1
             await self._progress_changed(event)
         elif self.preheating:
-            await self._preheated()
+            await self._preheated(event.context)
         else:
             # already hot when it was switched on
             self.preheated = True
@@ -581,12 +594,12 @@ class HomeConnectWatcher(ApplianceWatcher):
         # only as it happens, since the sensor may still be telling of the last time the oven was heated
         if self.running and not self.preheated and new_state is not None and new_state.state in STATES_EVENT_ON:
             self._forget_preheated()
-            self._cancel_preheated = async_call_later(self.hass, PREHEAT_SETTLE, self._preheat_settled)
+            self._cancel_preheated = async_call_later(self.hass, PREHEAT_SETTLE, partial(self._preheat_settled, event.context))
 
-    async def _preheat_settled(self, now: datetime) -> None:
+    async def _preheat_settled(self, context: Context, now: datetime) -> None:
         self._cancel_preheated = None
         if self.running and not self.preheated and self._cancel_end is None:
-            await self._preheated()
+            await self._preheated(_later(context))
 
     @callback
     def _forget_preheated(self) -> None:
@@ -594,7 +607,7 @@ class HomeConnectWatcher(ApplianceWatcher):
             self._cancel_preheated()
             self._cancel_preheated = None
 
-    async def _temperature_shown(self, always: bool = False) -> None:
+    async def _temperature_shown(self, context: Context, always: bool = False) -> None:
         """Keep the Live Activity of an oven up to heat to its temperature, give or take a few degrees"""
         current = self._number(CAVITY_TEMPERATURE_KEY)
         shown = self.shown_temperature
@@ -603,9 +616,9 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.shown_temperature = current
         async with self._sending:
             if self.running and (message := self._phase()):
-                await self._tell(message, ordinary=False)
+                await self._tell(message, False, context)
 
-    async def _preheated(self) -> None:
+    async def _preheated(self, context: Context) -> None:
         """The oven is up to heat, and however its temperature then wanders isn't warming up again till it's been off"""
         self.preheated = True
         self.preheating = False
@@ -620,12 +633,12 @@ class HomeConnectWatcher(ApplianceWatcher):
             elif supernotify_available(self.hass):
                 # a notification of its own, so that it isn't lost as the Live Activity moves on
                 await self._supernotify(
-                    message, title, resend=True, extra_data={"notification_icon": self.icon} | self._tap_data()
+                    message, title, context, resend=True, extra_data={"notification_icon": self.icon} | self._tap_data()
                 )
             else:
-                await self._send_message(message, title)
+                await self._send_message(message, title, context)
         # which goes straight on to what the oven is now doing
-        await self._temperature_shown(always=True)
+        await self._temperature_shown(context, always=True)
 
     async def _cycle_changed(self, event: Event[EventStateChangedData]) -> None:
         new_state = event.data["new_state"]
@@ -648,27 +661,27 @@ class HomeConnectWatcher(ApplianceWatcher):
             # an oven already warm starts part of the way along
             progress = self._progress()
             self.last_progress_mark = -1 if progress is None else self._mark(progress)
-            await self._started()
+            await self._started(event.context)
         elif not self.running:
             return
         elif state in STATES_SETTLING:
             if self._cancel_end is None:
-                self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, self._settled)
+                self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, partial(self._settled, event.context))
         elif state in STATES_FINISHED:
-            await self._cycle_over(finished=True)
+            await self._cycle_over(True, event.context)
         elif state in STATES_ABANDONED:
-            await self._cycle_over(finished=False)
+            await self._cycle_over(False, event.context)
         # anything else, such as `unavailable` while the vendor cloud is away, leaves the cycle as it was
 
-    async def _settled(self, now: datetime) -> None:
+    async def _settled(self, context: Context, now: datetime) -> None:
         self._cancel_end = None
-        await self._cycle_over(finished=True)
+        await self._cycle_over(True, _later(context))
 
-    async def _cycle_over(self, finished: bool) -> None:
+    async def _cycle_over(self, finished: bool, context: Context) -> None:
         self._keep_running()
         self._forget_preheated()
         self.running = False
-        await self._ended(finished)
+        await self._ended(finished, context)
 
 
 class PowerWatcher(ApplianceWatcher):
@@ -730,13 +743,13 @@ class PowerWatcher(ApplianceWatcher):
                 self._drawing_since = dt_util.utcnow()
                 remaining = self.min_duration - self._drawn_for
                 if remaining > 0:
-                    self._cancel_start = async_call_later(self.hass, remaining, self._long_enough)
+                    self._cancel_start = async_call_later(self.hass, remaining, partial(self._long_enough, event.context))
                 else:
-                    await self._confirmed()
+                    await self._confirmed(event.context)
         elif self.running or self.pending:
             self._stop_counting()
             if self._cancel_end is None:
-                self._cancel_end = async_call_later(self.hass, self.grace_period, self._grace_over)
+                self._cancel_end = async_call_later(self.hass, self.grace_period, partial(self._grace_over, event.context))
 
     @callback
     def _keep_running(self) -> None:
@@ -754,17 +767,17 @@ class PowerWatcher(ApplianceWatcher):
             self._cancel_start()
             self._cancel_start = None
 
-    async def _long_enough(self, now: datetime) -> None:
+    async def _long_enough(self, context: Context, now: datetime) -> None:
         self._cancel_start = None
-        await self._confirmed()
+        await self._confirmed(_later(context))
 
-    async def _confirmed(self) -> None:
+    async def _confirmed(self, context: Context) -> None:
         self.pending = False
         self._drawing_since = None
         self.running = True
-        await self._started()
+        await self._started(context)
 
-    async def _grace_over(self, now: datetime) -> None:
+    async def _grace_over(self, context: Context, now: datetime) -> None:
         self._cancel_end = None
         if self.pending:
             _LOGGER.debug("APPLIANCES %s drew power for %.0fs, too short for a cycle", self.name, self._drawn_for)
@@ -772,4 +785,4 @@ class PowerWatcher(ApplianceWatcher):
             self._drawn_for = 0
             return
         self.running = False
-        await self._ended(finished=True)
+        await self._ended(True, _later(context))

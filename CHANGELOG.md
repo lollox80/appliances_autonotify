@@ -1,6 +1,10 @@
 ---
 title: What's New
 ---
+# 0.8.1
+## ✨ Enhancements
+- Original Home Assistant [context](https://data.home-assistant.io/docs/context/) now propagated onto all downstream notification calls, so can be traced easily for example in State history
+
 # 0.8.0
 ## ✨ Enhancements
 - The progress bar of the Live Activity is updated every 5%, rather than every 10%. Notifications of progress, where *Notify progress* is on, are still every 10%
