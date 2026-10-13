@@ -74,8 +74,9 @@ shorter than the grace period, so a cycle that pauses as it starts still counts.
 ## Settings
 
 Nothing needs changing for notifications to work. Each appliance on the integration's page has settings: *Notify
-start* and *Notify end* switches, both on by default, for an oven a *Notify phases* switch, also on by default,
-a *Notify progress* switch, off by default, with Supernotify
+start* and *Notify end* switches, the start off and the end on by default, for an oven a *Notify phases* switch, on
+by default,
+a *Notify progress* switch, off by default, with Supernotify a *Program in title* switch, on by default,
 a *Dashboard to open* when a notification or the Live Activity is tapped, and then three sections that start closed.
 With *Notify start* or *Notify end* off, that notification isn't sent, but the Live Activity is still opened and
 closed, silently and on phones only. The dashboard is a choice of those in Home Assistant,
@@ -83,16 +84,20 @@ never a URL to type in, so a notification can't be made to open anything else.
 
 | Section              | What it does                                                                                 |
 | -------------------- | -------------------------------------------------------------------------------------------- |
-| Start message        | The title and message sent when the appliance starts, shown as they'll be sent, such as "Dishwasher started". Clear a box to go back to the usual wording |
+| Start message        | The title and message sent when the appliance starts, shown as they'll be sent, such as "Dishwasher started". Clear a box to go back to the usual wording. `{program}` is replaced by the program under way, as Home Assistant shows it, such as "Eco 50ºC", and by nothing for an appliance that reports none |
 | End message          | The same for when it finishes, such as "Dishwasher is finished". With Supernotify, also a *Reminder*, see below |
 | Notification targets | With Supernotify, *Targets* is the same choice of entities, devices, areas, floors and labels as any Supernotify notification, *Custom targets* is for those outside Home Assistant, such as e-mail addresses or phone numbers, and *Deliveries* limits notifications to those chosen. Leave them empty for Supernotify to choose. Without Supernotify, *Targets* is a choice of notify entities, and left empty means every phone with the Home Assistant app |
+
+With *Program in title* on, a Live Activity that has a time left to show is titled with the program beside the name,
+such as "Dishwasher · Eco 50ºC", since on the Lock Screen of an iPhone the timer takes the place of the message, which
+is where the program otherwise goes. Turn it off if the program names of an appliance are too long to fit.
 
 ## What Gets Sent
 
 | When                                   | With Supernotify                                                    | Without             |
 | -------------------------------------- | ------------------------------------------------------------------- | ------------------- |
-| Cycle starts                           | Start notification everywhere, opening a Live Activity on phones. With *Notify start* off, only the Live Activity, opened silently | Start notification, unless *Notify start* is off |
-| Every 10% of progress                  | Silent update of the Live Activity, on phones only, with the program under way as its message, such as "Eco 50ºC". With *Notify progress* on, a notification everywhere instead, which updates the Live Activity too | Nothing, or with *Notify progress* on, a notification |
+| Cycle starts                           | A Live Activity opened silently on phones. With *Notify start* on, a start notification everywhere, which opens the Live Activity too | Nothing, or with *Notify start* on, a start notification |
+| Every 5% of progress                   | Silent update of the Live Activity, on phones only, with the program under way as its message, such as "Eco 50ºC". With *Notify progress* on, a notification everywhere instead at every 10%, which updates the Live Activity too | Nothing, or with *Notify progress* on, a notification |
 | Every 2% of progress, from 90%         | Silent update of the Live Activity, on phones only                  | Nothing             |
 | Oven warming up                        | Silent update of the Live Activity as the oven warms, see below      | Nothing, or with *Notify progress* on, a notification |
 | Oven up to heat                        | "Oven is pre-heated" everywhere, unless *Notify phases* is off       | The same notification, unless *Notify phases* is off |
@@ -160,7 +165,7 @@ Both of these have been seen on an iPhone, and neither has a confirmed cause yet
 
 The progress bar of the Live Activity can fall well behind, such as showing 40% while the appliance is at 74%.
 
-The likely cause is iOS. Progress is sent with `silent: true`, so that the phone doesn't alert every 10%, and the
+The likely cause is iOS. Progress is sent with `silent: true`, so that the phone doesn't alert every 5%, and the
 [Companion App](https://companion.home-assistant.io/docs/notifications/live-activities) sends silent updates at a
 lower priority, which iOS may delay, batch or drop. This is a theory, since it hasn't been tested by sending the
 updates without `silent`.

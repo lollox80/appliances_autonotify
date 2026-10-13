@@ -46,7 +46,7 @@ async def test_cycle_with_supernotify(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
     calls = mock_supernotify(hass)
     hass.states.async_set(appliance.cycle, "ready")
-    entry = await setup_watcher(hass, appliance)
+    entry = await setup_watcher(hass, appliance, {"notify_start": True})
     tag = f"appliance_{entry.entry_id}"
 
     await set_state(hass, appliance.cycle, "run")
@@ -100,10 +100,10 @@ async def test_progress_updates_mobile_only(hass: HomeAssistant) -> None:
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.finish_time, "2026-10-06T21:44:16+00:00")
     # the first reading is sent whatever it is, since the start had no progress to show
-    await set_state(hass, appliance.progress, "4")
+    await set_state(hass, appliance.progress, "1")
     assert len(calls) == 2
-    assert calls[1].data["extra_data"]["progress"] == 4
-    await set_state(hass, appliance.progress, "6")
+    assert calls[1].data["extra_data"]["progress"] == 1
+    await set_state(hass, appliance.progress, "4")
     assert len(calls) == 2
 
     await set_state(hass, appliance.progress, "12")
@@ -128,10 +128,10 @@ async def test_progress_updates_mobile_only(hass: HomeAssistant) -> None:
         },
     }
 
-    # throttled to steps of ten percent
-    await set_state(hass, appliance.progress, "19")
+    # throttled to steps of five percent
+    await set_state(hass, appliance.progress, "14")
     assert len(calls) == 3
-    await set_state(hass, appliance.progress, "20")
+    await set_state(hass, appliance.progress, "15")
     assert len(calls) == 4
 
 
@@ -172,11 +172,14 @@ async def test_progress_notified_when_asked_for(hass: HomeAssistant) -> None:
 
 async def test_progress_notified_without_supernotify(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
-    await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"], "notify_progress": True})
+    await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"], "notify_start": True, "notify_progress": True})
     calls = async_mock_service(hass, "notify", "send_message")
 
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.progress, "4")
+    assert len(calls) == 1
+    # the steps of five in between are only for a Live Activity
+    await set_state(hass, appliance.progress, "5")
     assert len(calls) == 1
     await set_state(hass, appliance.progress, "30")
     assert [c.data["message"] for c in calls] == ["Dishwasher started", "30% complete"]
@@ -193,8 +196,8 @@ async def test_progress_bar_updated_more_often_towards_the_end(hass: HomeAssista
     for progress in (80, 89, 90, 91, 92, 93, 97, 99, 100):
         await set_state(hass, appliance.progress, str(progress))
         sent = [(c.data["extra_data"]["progress"], "silent" in c.data["extra_data"]) for c in calls[1:]]
-    # every two percent from ninety, of which only the tens are also ordinary notifications
-    assert sent == [(80, False), (90, False), (92, True), (97, True), (99, True), (100, False)]
+    # every five percent, then every two from ninety, of which only the tens are also ordinary notifications
+    assert sent == [(80, False), (89, True), (90, False), (92, True), (97, True), (99, True), (100, False)]
 
 
 async def test_live_activity_names_the_program(hass: HomeAssistant) -> None:
@@ -215,6 +218,69 @@ async def test_live_activity_names_the_program(hass: HomeAssistant) -> None:
         await set_state(hass, appliance.progress, "20")
     assert calls[2].data["message"] == "Eco 50ºC"
     assert calls[2].data["extra_data"]["progress"] == 20
+
+
+async def test_program_is_in_the_title_when_there_is_a_timer(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(appliance.program, "Eco")
+    hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
+    await setup_watcher(hass, appliance)
+
+    # the start too, which is only a Live Activity unless asked for
+    await set_state(hass, appliance.cycle, "run")
+    assert (calls[0].data["title"], calls[0].data["message"]) == ("Dishwasher · Eco", "Dishwasher started")
+    # the message, which iOS shows only in the Dynamic Island, has the progress to itself
+    await set_state(hass, appliance.progress, "5")
+    assert (calls[1].data["title"], calls[1].data["message"]) == ("Dishwasher · Eco", "5% complete")
+
+
+async def test_program_is_kept_out_of_the_title_when_switched_off(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(appliance.program, "Eco")
+    hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
+    await setup_watcher(hass, appliance, {"program_in_title": False})
+
+    await set_state(hass, appliance.cycle, "run")
+    await set_state(hass, appliance.progress, "5")
+    assert [(call.data["title"], call.data["message"]) for call in calls] == [
+        ("Dishwasher", "Dishwasher started"),
+        ("Dishwasher", "Eco"),
+    ]
+
+
+async def test_program_can_be_named_in_the_messages(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
+    options = {"start_title": "{name} {program}", "start_message": "{program} started", "end_message": "{program} is done"}
+    await setup_watcher(hass, appliance, options)
+
+    # with no program known, its place is closed up
+    await set_state(hass, appliance.cycle, "run")
+    assert (calls[0].data["title"], calls[0].data["message"]) == ("Dishwasher", "started")
+
+    # and one already in the title isn't put there a second time
+    await set_state(hass, appliance.program, "Eco")
+    await set_state(hass, appliance.progress, "5")
+    assert (calls[1].data["title"], calls[1].data["message"]) == ("Dishwasher Eco", "Eco")
+
+    # the end names the program that ran, though the appliance has stopped reporting it
+    await set_state(hass, appliance.program, "unknown")
+    await set_state(hass, appliance.cycle, "finished")
+    assert calls[-1].data["message"] == "Eco is done"
+
+
+async def test_title_is_left_alone_where_notified_everywhere(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(appliance.program, "Eco")
+    hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
+    await setup_watcher(hass, appliance, {"notify_start": True})
+
+    await set_state(hass, appliance.cycle, "run")
+    assert calls[0].data["title"] == "Dishwasher"
 
 
 async def test_program_chosen_is_named_when_none_is_under_way(hass: HomeAssistant) -> None:
@@ -295,10 +361,21 @@ async def test_start_and_end_notifications_switched_off(hass: HomeAssistant) -> 
     assert calls[1].data["extra_data"] == {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True}
 
 
+async def test_start_is_only_a_live_activity_unless_asked_for(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    await setup_watcher(hass, appliance)
+
+    await set_state(hass, appliance.cycle, "run")
+    assert len(calls) == 1
+    assert calls[0].data["delivery"] == ["mobile_push", "phones"]
+    assert calls[0].data["extra_data"]["silent"] is True
+
+
 async def test_start_and_end_switched_separately(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
     calls = mock_supernotify(hass)
-    await setup_watcher(hass, appliance, {"notify_end": False})
+    await setup_watcher(hass, appliance, {"notify_start": True, "notify_end": False})
 
     await set_state(hass, appliance.cycle, "run")
     assert "delivery_selection" not in calls[0].data
@@ -354,7 +431,7 @@ async def test_oven_progress_is_its_temperature_until_up_to_heat(hass: HomeAssis
     assert calls[0].data["extra_data"]["progress_max"] == 100
 
     # throttled as any other progress
-    await set_temperature(hass, cavity, "38")
+    await set_temperature(hass, cavity, "28")
     assert len(calls) == 1
     await set_temperature(hass, cavity, "104")
     assert len(calls) == 2
@@ -536,6 +613,34 @@ async def test_progress_known_at_start_is_not_repeated(hass: HomeAssistant) -> N
     assert len(calls) == 2
 
 
+async def test_first_progress_waits_for_the_live_activity_to_open(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    await setup_watcher(hass, appliance)
+
+    # as Home Connect tells it, the progress coming moments after the cycle starts
+    with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0.2):
+        hass.states.async_set(appliance.cycle, "run")
+        hass.states.async_set(appliance.progress, "0")
+        await asyncio.sleep(0.05)
+        assert [call.data["message"] for call in calls] == ["Dishwasher started"]
+        await hass.async_block_till_done()
+    assert len(calls) == 2
+    assert calls[1].data["extra_data"]["progress"] == 0
+
+
+async def test_start_is_not_held_up_without_supernotify(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"], "notify_start": True})
+    calls = async_mock_service(hass, "notify", "send_message")
+
+    # with no Live Activity to open, there's nothing to wait for
+    with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 60):
+        async with asyncio.timeout(1):
+            await set_state(hass, appliance.cycle, "run")
+    assert len(calls) == 1
+
+
 async def test_progress_update_cannot_overtake_the_end(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
     calls = mock_supernotify(hass)
@@ -679,6 +784,7 @@ async def test_overrides_targets_and_deliveries(hass: HomeAssistant) -> None:
             "target": {"entity_id": ["person.joe"], "area_id": ["kitchen"]},
             "custom_target": ["joe@example.com"],
             "deliveries": ["phones", "chimes"],
+            "notify_start": True,
         },
     )
 
@@ -700,7 +806,7 @@ async def test_overrides_targets_and_deliveries(hass: HomeAssistant) -> None:
 async def test_no_mobile_deliveries_chosen(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
     calls = mock_supernotify(hass)
-    await setup_watcher(hass, appliance, {"deliveries": ["chimes"]})
+    await setup_watcher(hass, appliance, {"deliveries": ["chimes"], "notify_start": True})
 
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.progress, "50")
@@ -710,7 +816,7 @@ async def test_no_mobile_deliveries_chosen(hass: HomeAssistant) -> None:
 
 async def test_cycle_without_supernotify(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
-    entry = await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"]})
+    entry = await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"], "notify_start": True})
     calls = async_mock_service(hass, "notify", "send_message")
 
     await set_state(hass, appliance.cycle, "run")
@@ -734,7 +840,7 @@ async def test_cycle_without_supernotify(hass: HomeAssistant) -> None:
 
 async def test_phones_notified_when_nothing_chosen(hass: HomeAssistant, caplog) -> None:
     appliance = add_appliance(hass)
-    await setup_watcher(hass, appliance)
+    await setup_watcher(hass, appliance, {"notify_start": True})
     calls = async_mock_service(hass, "notify", "send_message")
 
     await set_state(hass, appliance.cycle, "run")
@@ -752,7 +858,7 @@ async def test_phones_notified_when_nothing_chosen(hass: HomeAssistant, caplog) 
 
 async def test_notification_failure_is_logged(hass: HomeAssistant, caplog) -> None:
     appliance = add_appliance(hass)
-    await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"]})
+    await setup_watcher(hass, appliance, {"targets": ["notify.kitchen_display"], "notify_start": True})
 
     def fail(call) -> None:
         raise HomeAssistantError("offline")
@@ -795,7 +901,7 @@ async def pass_time(hass: HomeAssistant, seconds: float) -> None:
 async def test_power_monitored_cycle(hass: HomeAssistant, freezer) -> None:
     calls = mock_supernotify(hass)
     hass.states.async_set("sensor.washer_power", "0.4", {"unit_of_measurement": "W"})
-    entry = await setup_power_watcher(hass, grace_period=10)
+    entry = await setup_power_watcher(hass, grace_period=10, notify_start=True)
     tag = f"appliance_{entry.entry_id}"
 
     # at the threshold isn't running

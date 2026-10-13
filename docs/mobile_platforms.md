@@ -77,8 +77,8 @@ Where the Companion docs and the app source disagree, the source is followed and
 | --- | --- | --- | --- | --- |
 | `tag` | Notification id, same tag replaces | Activity id. Only `[A-Za-z0-9_-]`, at most 64 characters, or the activity is refused | Yes, as Supernotify's `mobile_push_notification_tag` | `appliance_<entry_id>` fits |
 | `live_update` | Ongoing, and promoted on Android 16+ | Starts or updates a Live Activity | Yes | |
-| `title` | Set on every notification | Shown as the latest one sent, though the docs still say it is fixed at the start | Yes, the start title on the start and every update | So older iOS apps match |
-| `message` | Body text | Body text, replaced by the timer on the Lock Screen | Yes | In quiet updates the program, or the percentage when there's none |
+| `title` | Set on every notification | Shown as the latest one sent, though the docs still say it is fixed at the start | Yes, the start title on the start and every update, with the program after it in quiet updates that have a timer, unless *Program in title* is off | An older iOS app keeps the title it started with |
+| `message` | Body text | Body text, replaced by the timer on the Lock Screen | Yes | In quiet updates the program, or the percentage when there's none or when, with a timer, the program is in the title |
 | `progress`, `progress_max` | `setProgress()` | Bar and percentage, only with both set | Yes, when reported | *Tested* |
 | `chronometer`, `when` | Counts down to `when`, then up into negatives | Counts down to `when`, then up | Yes, when a finish time is reported | *Tested*, see Time left |
 | `when_relative` | `when` as seconds from now | The same, and a negative value counts up to a stop | No | Home Connect gives an absolute time |
@@ -280,7 +280,7 @@ Progress updates are of two kinds:
 - **Ordinary**, at each 10% with *Notify progress* on: "N% complete" as the message, to every delivery, without
   `silent` or `alert_once`.
 
-With *Notify start* off, the start is sent as a quiet update too, to phones only. It still alerts on the phone,
+With *Notify start* off, as it is unless changed, the start is sent as a quiet update too, to phones only. It still alerts on the phone,
 though: `alert_once` only quiets later posts of a tag on Android, and a push-to-start on iOS always alerts.
 
 The end is `mobile_push_clear_notification: true` with the same tag and the end title, then an ordinary end
@@ -294,7 +294,7 @@ Possible settings, each worth having only if someone asks for it.
 | Option | Now | Why |
 | --- | --- | --- |
 | Colour per appliance | None, so HA blue | *Tested*: tells the chip and the pill apart on One UI with the developer option, and colours the icon and bar on iOS. Could be chosen from the name, like the icon |
-| Progress steps | 10%, then 2% from 90% | Fewer updates on iOS, finer on Android |
+| Progress steps | 5%, then 2% from 90% | Fewer updates on iOS, finer on Android |
 | FCM priority `high` for updates | Off | For phones that hold back updates while dozing. Not yet shown to be needed |
 | `relevance_score` | None | With two appliances running, the one finishing first could take the Dynamic Island |
 | `persistent` | Off | Stops Android 7 to 15 users swiping the notification away |

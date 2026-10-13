@@ -64,19 +64,21 @@
                     "notify_end": "Notify end",
                     "notify_phase": "Notify phases",
                     "notify_progress": "Notify progress",
-                    "dashboard": "Dashboard to open"
+                    "dashboard": "Dashboard to open",
+                    "program_in_title": "Program in title"
                 },
                 "data_description": {
                     "notify_start": "Send a notification when the appliance starts. When off, the Live Activity is still opened, silently and on phones only.",
                     "notify_end": "Send a notification when the appliance finishes. When off, the Live Activity is still closed.",
                     "notify_phase": "Send a notification when a phase of the cycle is over, such as an oven getting up to heat. When off, it is only shown on the Live Activity.",
                     "dashboard": "Opened when a notification or the Live Activity is tapped. Leave empty to open the app where it was.",
-                    "notify_progress": "Send a notification every 10% of the cycle. When off, progress is only shown on the progress bar of the Live Activity, which is updated silently."
+                    "notify_progress": "Send a notification every 10% of the cycle. When off, progress is only shown on the progress bar of the Live Activity, which is updated silently.",
+                    "program_in_title": "Show the program beside the name on the Live Activity, such as \"Dishwasher · Eco 50ºC\", whenever there's a time left to show, which on an iPhone's Lock Screen takes the place of the message. Turn off if the program names are too long to fit."
                 },
                 "sections": {
                     "start": {
                         "name": "Start message",
-                        "description": "Sent when the appliance starts. Clear a box to go back to the usual wording.",
+                        "description": "Sent when the appliance starts. Clear a box to go back to the usual wording. Put {program_placeholder} where the program under way should be named.",
                         "data": {
                             "start_title": "Title",
                             "start_message": "Message"
@@ -84,7 +86,7 @@
                     },
                     "end": {
                         "name": "End message",
-                        "description": "Sent when the appliance finishes. Clear a box to go back to the usual wording.",
+                        "description": "Sent when the appliance finishes. Clear a box to go back to the usual wording. Put {program_placeholder} where the program that ran should be named.",
                         "data": {
                             "end_title": "Title",
                             "end_message": "Message",

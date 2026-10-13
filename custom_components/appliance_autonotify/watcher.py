@@ -44,6 +44,7 @@ from .const import (
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
+    CONF_PROGRAM_IN_TITLE,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
@@ -69,6 +70,8 @@ from .const import (
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
     ICONS,
+    LIVE_SETTLE,
+    LIVE_TITLE,
     MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
     MOBILE_PUSH_TRANSPORT,
@@ -81,11 +84,13 @@ from .const import (
     PREHEAT_SETTLE,
     PREHEATED_MESSAGE,
     PROGRAM_KEYS,
+    PROGRAM_PLACEHOLDER,
     PROGRESS_CHIP,
     PROGRESS_FINAL,
     PROGRESS_FINAL_STEP,
     PROGRESS_KEY,
     PROGRESS_MESSAGE,
+    PROGRESS_NOTIFY_STEP,
     PROGRESS_STEP,
     STATE_RUN,
     STATES_ABANDONED,
@@ -123,9 +128,12 @@ class ApplianceWatcher:
         self.cycle_entity_id: str | None = None
         # by translation key, whichever of those made use of the appliance has
         self.entity_ids: dict[str, str] = {}
-        self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, True)
+        self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
+        self.program_in_title: bool = entry.options.get(CONF_PROGRAM_IN_TITLE, True)
+        # the program last known, since an appliance may no longer report one by the time its end is told
+        self.last_program: str = ""
         # whether phases are notified unless chosen otherwise, None for an appliance that reports none
         self.phase_default: bool | None = None
         self.notify_phase: bool = False
@@ -174,8 +182,9 @@ class ApplianceWatcher:
         if mark <= self.last_progress_mark:
             return
         # the first reading only fills in the Live Activity, coming straight after the start notification, as do
-        # the smaller steps towards the end
-        ordinary = self.notify_progress and mark // PROGRESS_STEP > max(self.last_progress_mark, 0) // PROGRESS_STEP
+        # the steps between those notified and the smaller ones towards the end
+        step = PROGRESS_NOTIFY_STEP
+        ordinary = self.notify_progress and mark // step > max(self.last_progress_mark, 0) // step
         self.last_progress_mark = mark
         live = supernotify_available(self.hass)
         if not live and not ordinary:
@@ -196,6 +205,9 @@ class ApplianceWatcher:
         async with self._sending:
             # resent, since to Supernotify a second cycle soon after the first is a repeat to be dropped
             await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start, resend=True)
+            if supernotify_available(self.hass):
+                # whatever comes next waits its turn, the first progress being only moments behind the start
+                await asyncio.sleep(LIVE_SETTLE)
 
     async def _tell(self, message: str, ordinary: bool, resend: bool = False) -> None:
         """Notify of a cycle under way, either everywhere or with no more than its Live Activity brought up to date"""
@@ -208,13 +220,14 @@ class ApplianceWatcher:
             # everywhere, opening or updating the Live Activity on phones as it goes
             await self._supernotify(message, title, resend=resend, extra_data=self._live_data())
         else:
+            data = self._live_data()
+            if self.program_in_title and "when" in data and (phase := self._phase()) and phase not in title:
+                # with a timer there's no message on the iOS Lock Screen, so what it's doing goes beside the name
+                title = LIVE_TITLE.format(title=title, phase=phase)
+                if message == phase and (progress := self._progress()) is not None:
+                    message = self._progress_message(progress)
             # with nothing to hear, and nothing sent anywhere but to phones
-            await self._supernotify(
-                message,
-                title,
-                mobile_only=True,
-                extra_data=self._live_data() | {"silent": True, "alert_once": True},
-            )
+            await self._supernotify(message, title, mobile_only=True, extra_data=data | {"silent": True, "alert_once": True})
 
     async def _ended(self, finished: bool) -> None:
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
@@ -305,7 +318,12 @@ class ApplianceWatcher:
                 _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
 
     def _text(self, key: str, default: str) -> str:
-        return str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
+        text = str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
+        if PROGRAM_PLACEHOLDER not in text:
+            return text
+        self.last_program = self._program() or self.last_program
+        # closing up the gap left where there's no program to name
+        return " ".join(text.replace(PROGRAM_PLACEHOLDER, self.last_program).split(" ")).strip()
 
     def _state(self, key: str) -> State | None:
         """The state of one of the appliance's entities, where it has the entity and its state is known"""

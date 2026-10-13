@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from homeassistant.const import CONF_DEVICE_ID
@@ -18,6 +19,13 @@ from custom_components.appliance_autonotify.const import DOMAIN
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
     return
+
+
+@pytest.fixture(autouse=True)
+def no_live_settle():
+    """Nothing held back after the start, other than in the tests of that"""
+    with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0):
+        yield
 
 
 @dataclass

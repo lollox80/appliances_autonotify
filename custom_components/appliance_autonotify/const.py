@@ -22,6 +22,8 @@ CONF_NOTIFY_START: Final[str] = "notify_start"
 CONF_NOTIFY_END: Final[str] = "notify_end"
 # whether the end of a phase, such as an oven getting up to heat, is told with an ordinary notification
 CONF_NOTIFY_PHASE: Final[str] = "notify_phase"
+# whether the program goes beside the name in the title of a Live Activity with a timer, for those short enough to fit
+CONF_PROGRAM_IN_TITLE: Final[str] = "program_in_title"
 # path of the dashboard opened by a tap on a notification, the app is opened where it was last if there's none
 CONF_DASHBOARD: Final[str] = "dashboard"
 LOVELACE_DOMAIN: Final[str] = "lovelace"
@@ -51,6 +53,8 @@ DEFAULT_MIN_DURATION: Final[float] = 0
 # English only for the MVP
 DISCOVERY_TITLE: Final[str] = "Automatic discovery"
 NAME_PLACEHOLDER: Final[str] = "{name}"
+# the program under way, as Home Assistant shows it, and nothing at all for an appliance that reports none
+PROGRAM_PLACEHOLDER: Final[str] = "{program}"
 DEFAULT_TITLE: Final[str] = "{name}"
 DEFAULT_START_MESSAGE: Final[str] = "{name} started"
 DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
@@ -79,6 +83,8 @@ PREHEAT_PHASE: Final[str] = "Pre-heating"
 FAST_PREHEAT_PHASE: Final[str] = "Fast pre-heat"
 PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"
 PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
+# the title of a Live Activity with a timer, which iOS shows on the Lock Screen in place of the message
+LIVE_TITLE: Final[str] = "{title} · {phase}"
 # what an oven up to heat is doing, and how hot it is
 OVEN_MESSAGE: Final[str] = "{program}, {current}{unit}"
 SUPERNOTIFY_PRESENT: Final[str] = "Supernotify is installed, so mobile apps will show a Live Activity for each cycle."
@@ -124,11 +130,16 @@ STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive")
 STATES_SETTLING: Final[tuple[str, ...]] = ("ready",)
 # seconds an appliance is left to settle before the cycle is over
 CYCLE_SETTLE: Final[float] = 10
+# seconds a Live Activity is left to open before anything more is sent to it, since a push sent straight after the
+# start can reach a phone ahead of it, and then be overwritten by the start, with no bar and no program
+LIVE_SETTLE: Final[float] = 5
 # the cycle is over without finishing, so the Live Activity goes without an end notification
 STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting")
 
 # percentage points between Live Activity updates, since mobile platforms throttle frequent ones
-PROGRESS_STEP: Final[int] = 10
+PROGRESS_STEP: Final[int] = 5
+# percentage points between ordinary notifications of progress, where those are asked for
+PROGRESS_NOTIFY_STEP: Final[int] = 10
 # from here on the end is in sight and the bar is being watched, so it's kept closer to the appliance
 PROGRESS_FINAL: Final[int] = 90
 PROGRESS_FINAL_STEP: Final[int] = 2

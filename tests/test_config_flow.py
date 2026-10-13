@@ -226,7 +226,13 @@ async def test_settings_without_supernotify(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["step_id"] == "settings"
-    assert result["description_placeholders"] == {"name": "Dishwasher", "supernotify": SUPERNOTIFY_MISSING}
+    assert result["description_placeholders"] == {
+        "name": "Dishwasher",
+        "supernotify": SUPERNOTIFY_MISSING,
+        "program_placeholder": "{program}",
+    }
+    # with no Live Activity, there's no title for the program to go in
+    assert "program_in_title" not in [str(k) for k in result["data_schema"].schema]
     # everything but whether to notify progress is tucked away in three sections
     sections = {str(k): v for k, v in result["data_schema"].schema.items()}
     for switch in ("notify_start", "notify_end", "notify_progress"):
@@ -281,9 +287,17 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
     assert suggested(result)["start_title"] == "Dishwasher"
     assert suggested(result)["start_message"] == "Dishwasher is go"
     # progress isn't notified until asked for, and the choice isn't hidden away in a section
-    assert list(result["data_schema"].schema) == ["notify_start", "notify_end", "notify_progress", "start", "end", "notify"]
+    assert list(result["data_schema"].schema) == [
+        "notify_start",
+        "notify_end",
+        "notify_progress",
+        "program_in_title",
+        "start",
+        "end",
+        "notify",
+    ]
     switches = {str(k): k.default() for k in result["data_schema"].schema if k.default is not vol.UNDEFINED}
-    assert switches == {"notify_start": True, "notify_end": True, "notify_progress": False}
+    assert switches == {"notify_start": False, "notify_end": True, "notify_progress": False, "program_in_title": True}
     notify = next(v for k, v in result["data_schema"].schema.items() if k == "notify").schema.schema
     # the notify entity list is only for use without Supernotify
     assert list(notify) == ["target", "custom_target", "deliveries"]
@@ -296,7 +310,7 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            "notify_start": False,
+            "notify_end": False,
             "notify_progress": True,
             "start": {"start_title": "Dishwasher", "start_message": "Dishwasher is go"},
             "end": {},
@@ -306,18 +320,18 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     # a switch is only kept once it's been changed
-    assert entry.options == {"notify_start": False, "notify_progress": True, "start_message": "Dishwasher is go", **settings}
+    assert entry.options == {"notify_end": False, "notify_progress": True, "start_message": "Dishwasher is go", **settings}
     assert entry.runtime_data.notify_progress is True
-    assert (entry.runtime_data.notify_start, entry.runtime_data.notify_end) == (False, True)
+    assert (entry.runtime_data.notify_start, entry.runtime_data.notify_end) == (False, False)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert suggested(result)["notify_progress"] is True
-    assert suggested(result)["notify_start"] is False
-    assert "notify_end" not in suggested(result)
+    assert suggested(result)["notify_end"] is False
+    assert "notify_start" not in suggested(result)
     assert suggested(result)["target"] == {"entity_id": ["person.joe"]}
     assert suggested(result)["deliveries"] == ["phones"]
 
     # reminders are tuned by how long between them and how many, the usual number of them not being a setting
-    form = {"notify_start": False, "notify_progress": True, "start": {}, "notify": settings}
+    form = {"notify_end": False, "notify_progress": True, "start": {}, "notify": settings}
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], form | {"end": {"reminder": 15, "reminder_repeats": 5}}
     )

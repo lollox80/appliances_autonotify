@@ -1,6 +1,15 @@
 ---
 title: What's New
 ---
+# 0.8.0
+## ✨ Enhancements
+- The progress bar of the Live Activity is updated every 5%, rather than every 10%. Notifications of progress, where *Notify progress* is on, are still every 10%
+- *Notify start* is now off unless switched on, so the start only opens the Live Activity, silently and on phones. An appliance whose switch has never been changed follows the new default, so switch it on to keep the start notification, which is otherwise no longer sent at all without Supernotify
+- *Program in title* switch in the settings of each appliance, with Supernotify, on unless changed. The program is shown beside the name on a Live Activity with a time left, such as "Dishwasher · Intensive 70ºC", since the iOS Lock Screen shows the timer in place of the message, which is where the program was. Switch it off for program names too long to fit
+- `{program}` template variable available in *Advanced* to customize the title or message of the start and the end is replaced by the program, as Home Assistant shows it in state view
+## 🐛 Fixes
+- The Live Activity is no longer left with no progress bar and no program name until the next step of progress. The first progress came within moments of the start, and could reach a phone ahead of it, so is now held back for 5 seconds
+
 # 0.7.1
 ## ✨ Enhancements
 - Action buttons now at the end of a cycle, to mark it as finished (you've emptied the dishwasher, taken out the pie), remind later, or for switchable power monitors only, switch off the plug

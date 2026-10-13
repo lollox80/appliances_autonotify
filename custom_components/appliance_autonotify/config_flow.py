@@ -39,6 +39,7 @@ from .const import (
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
+    CONF_PROGRAM_IN_TITLE,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
@@ -58,6 +59,7 @@ from .const import (
     DISCOVERY_TITLE,
     DOMAIN,
     NAME_PLACEHOLDER,
+    PROGRAM_PLACEHOLDER,
     SUPERNOTIFY_MISSING,
     SUPERNOTIFY_PRESENT,
     TYPE_DISCOVERY,
@@ -75,7 +77,12 @@ SECTION_END = "end"
 SECTION_NOTIFY = "notify"
 
 # a switch left as it comes isn't a setting either
-DEFAULT_SWITCHES: dict[str, bool] = {CONF_NOTIFY_START: True, CONF_NOTIFY_END: True, CONF_NOTIFY_PROGRESS: False}
+DEFAULT_SWITCHES: dict[str, bool] = {
+    CONF_NOTIFY_START: False,
+    CONF_NOTIFY_END: True,
+    CONF_NOTIFY_PROGRESS: False,
+    CONF_PROGRAM_IN_TITLE: True,
+}
 
 DEFAULT_TEXTS: dict[str, str] = {
     CONF_START_TITLE: DEFAULT_TITLE,
@@ -95,7 +102,7 @@ def discovery_schema(auto_discover: bool = True) -> vol.Schema:
 
 async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: bool | None = None) -> vol.Schema:
     fields: dict[vol.Marker, Any] = {
-        vol.Required(CONF_NOTIFY_START, default=True): BooleanSelector(),
+        vol.Required(CONF_NOTIFY_START, default=False): BooleanSelector(),
         vol.Required(CONF_NOTIFY_END, default=True): BooleanSelector(),
     }
     if phase is not None:
@@ -103,6 +110,9 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
         fields[vol.Required(CONF_NOTIFY_PHASE, default=phase)] = BooleanSelector()
     if progress:
         fields[vol.Required(CONF_NOTIFY_PROGRESS, default=False)] = BooleanSelector()
+        if supernotify_available(hass):
+            # only a Live Activity has a title that changes as the cycle goes on
+            fields[vol.Required(CONF_PROGRAM_IN_TITLE, default=True)] = BooleanSelector()
     notify: dict[vol.Marker, Any] = {}
     end: dict[vol.Marker, Any] = {
         vol.Optional(CONF_END_TITLE): TextSelector(),
@@ -311,7 +321,12 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
         return self.async_show_form(
             step_id=STEP_SETTINGS,
             data_schema=self.add_suggested_values_to_schema(schema, sectioned(schema, shown)),
-            description_placeholders={"name": name, "supernotify": supernotify_status(self.hass)},
+            description_placeholders={
+                "name": name,
+                "supernotify": supernotify_status(self.hass),
+                # as it's to be typed, which a translation can't say for itself
+                "program_placeholder": PROGRAM_PLACEHOLDER,
+            },
         )
 
     async def async_step_power(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
