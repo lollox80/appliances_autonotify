@@ -17,5 +17,5 @@
     "iot_class": "calculated",
     "issue_tracker": "https://github.com/rhizomatics/appliance_autonotify/issues",
     "requirements": [],
-    "version": "0.8.2"
+    "version": "0.8.3"
 }
