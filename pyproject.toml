@@ -108,8 +108,8 @@ module = ["pytest_homeassistant_custom_component.*"]
 follow_untyped_imports = true
 
 [project.urls]
-Homepage="https://appliances-autonotify.rhizomatics.org.uk"
-Repository="https://github.com/rhizomatics/appliances_autonotify"
-Documentation="https://appliances-autonotify.rhizomatics.org.uk"
-Issues="https://github.com/rhizomatics/appliances_autonotify/issues"
-Changelog="https://github.com/rhizomatics/appliances_autonotify/blob/main/CHANGELOG.md"
+Homepage="https://appliance-autonotify.rhizomatics.org.uk"
+Repository="https://github.com/rhizomatics/appliance_autonotify"
+Documentation="https://appliance-autonotify.rhizomatics.org.uk"
+Issues="https://github.com/rhizomatics/appliance_autonotify/issues"
+Changelog="https://github.com/rhizomatics/appliance_autonotify/blob/main/CHANGELOG.md"

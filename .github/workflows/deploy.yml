@@ -24,11 +24,11 @@ jobs:
     - name: Package release zip
       run: |
         cd custom_components/appliance_autonotify
-        zip -r "${{ github.workspace }}/appliances_autonotify.zip" . -x "__pycache__/*" "*/__pycache__/*"
+        zip -r "${{ github.workspace }}/appliance_autonotify.zip" . -x "__pycache__/*" "*/__pycache__/*"
     - name: Upload release zip asset
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: gh release upload "${{ github.event.release.tag_name }}" appliances_autonotify.zip --clobber
+      run: gh release upload "${{ github.event.release.tag_name }}" appliance_autonotify.zip --clobber
 
   build:
     # an edited release only needs its zip rebuilt

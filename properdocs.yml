@@ -1,9 +1,9 @@
-site_name: Appliances AutoNotify for Home Assistant
-site_url: https://appliances-autonotify.rhizomatics.org.uk
+site_name: Appliance AutoNotify for Home Assistant
+site_url: https://appliance-autonotify.rhizomatics.org.uk
 site_description: Automated discovery and live notification activities for household appliances
 
-repo_name: rhizomatics/appliances_autonotify
-repo_url: https://github.com/rhizomatics/appliances_autonotify
+repo_name: rhizomatics/appliance_autonotify
+repo_url: https://github.com/rhizomatics/appliance_autonotify
 edit_uri: edit/main/docs/
 
 theme:

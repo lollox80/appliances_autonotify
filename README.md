@@ -1,10 +1,10 @@
 # Appliance Auto Notify
 
 [![Rhizomatics Open Source](https://img.shields.io/badge/rhizomatics%20open%20source-lightseagreen)](https://github.com/rhizomatics) [![hacs][hacsbadge]][hacs]
-[![CI](https://github.com/rhizomatics/appliances_autonotify/actions/workflows/ci.yml/badge.svg)](https://github.com/rhizomatics/appliances_autonotify/actions/workflows/ci.yml)
-[![Github Deploy](https://github.com/rhizomatics/appliances_autonotify/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/rhizomatics/appliances_autonotify/actions/workflows/deploy.yml)
-![Coverage](https://raw.githubusercontent.com/rhizomatics/appliances_autonotify/refs/heads/badges/badges/coverage.svg)
-![Tests](https://raw.githubusercontent.com/rhizomatics/appliances_autonotify/refs/heads/badges/badges/tests.svg)
+[![CI](https://github.com/rhizomatics/appliance_autonotify/actions/workflows/ci.yml/badge.svg)](https://github.com/rhizomatics/appliance_autonotify/actions/workflows/ci.yml)
+[![Github Deploy](https://github.com/rhizomatics/appliance_autonotify/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/rhizomatics/appliance_autonotify/actions/workflows/deploy.yml)
+![Coverage](https://raw.githubusercontent.com/rhizomatics/appliance_autonotify/refs/heads/badges/badges/coverage.svg)
+![Tests](https://raw.githubusercontent.com/rhizomatics/appliance_autonotify/refs/heads/badges/badges/tests.svg)
 
 Automatic notifications for household appliances in Home Assistant, with no automations or YAML.
 
@@ -33,9 +33,9 @@ unless you choose other notify entities.
 
 ## Install
 
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rhizomatics&repository=appliances_autonotify&category=integration)
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rhizomatics&repository=appliance_autonotify&category=integration)
 
-1. Use the button above, or in HACS add `https://github.com/rhizomatics/appliances_autonotify` as a custom
+1. Use the button above, or in HACS add `https://github.com/rhizomatics/appliance_autonotify` as a custom
    repository of type *Integration*, then install *Appliance Auto Notify* and restart Home Assistant
 2. In *Settings*, *Devices & services*, choose *Add integration* and pick *Appliance Auto Notify*
 3. Leave *Set up appliances automatically* on, and submit

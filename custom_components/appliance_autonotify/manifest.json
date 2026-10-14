@@ -12,10 +12,10 @@
     "dependencies": [
         "notify"
     ],
-    "documentation": "https://github.com/rhizomatics/appliances_autonotify",
+    "documentation": "https://github.com/rhizomatics/appliance_autonotify",
     "integration_type": "service",
     "iot_class": "calculated",
-    "issue_tracker": "https://github.com/rhizomatics/appliances_autonotify/issues",
+    "issue_tracker": "https://github.com/rhizomatics/appliance_autonotify/issues",
     "requirements": [],
     "version": "0.8.1"
 }
