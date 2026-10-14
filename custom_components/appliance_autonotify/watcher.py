@@ -98,16 +98,23 @@ from .const import (
     STATES_EVENT_ON,
     STATES_FINISHED,
     STATES_SETTLING,
+    STUCK_MESSAGES,
     SUPERNOTIFY_DOMAIN,
     TARGET_TEMPERATURE_KEY,
     TEMPERATURE_STEP,
     TYPE_ICONS,
+    TYPE_VACUUM,
+    VACUUM_CLEANING,
+    VACUUM_DONE,
+    VACUUM_ERROR,
+    VACUUM_SETTLE,
 )
 from .dashboards import dashboard_url
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .words import name_type
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
     from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
@@ -786,3 +793,100 @@ class PowerWatcher(ApplianceWatcher):
             return
         self.running = False
         await self._ended(True, _later(context))
+
+
+class VacuumWatcher(ApplianceWatcher):
+    """A robot vacuum of any make, whose cleaning is the cycle, from setting off till it's back or stopped by itself"""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry)
+        self._cancel_end: CALLBACK_TYPE | None = None
+        # what it's waiting to see last, back on its dock or stuck
+        self._pending: str | tuple[str, ...] | None = None
+
+    @callback
+    def async_start(self) -> None:
+        device_id: str = self.entry.data[CONF_DEVICE_ID]
+        device = dr.async_get(self.hass).async_get(device_id)
+        if device is not None:
+            self.name = device.name_by_user or device.name or self.name
+        self.cycle_entity_id = next(
+            (e.entity_id for e in er.async_entries_for_device(er.async_get(self.hass), device_id) if e.domain == TYPE_VACUUM),
+            None,
+        )
+        if self.cycle_entity_id is None:
+            raise ConfigEntryNotReady(f"No vacuum entity found for {self.name}")
+        self.icon = TYPE_ICONS["cleaning_robot"]
+        # a cleaning under way at startup still has its Live Activity closed when it ends
+        state = self.hass.states.get(self.cycle_entity_id)
+        self.running = state is not None and state.state not in (*VACUUM_DONE, VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._activity_changed))
+        self.entry.async_on_unload(self._keep_running)
+
+    @callback
+    def _keep_running(self) -> None:
+        self._pending = None
+        if self._cancel_end is not None:
+            self._cancel_end()
+            self._cancel_end = None
+
+    async def _activity_changed(self, event: Event[EventStateChangedData]) -> None:
+        new_state = event.data["new_state"]
+        if new_state is None:
+            return
+        state: str = new_state.state
+        _LOGGER.debug("APPLIANCES %s vacuum %s, running: %s", self.name, state, self.running)
+        if state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            # away with the vendor cloud, which changes nothing
+            return
+        if not self.running:
+            if state == VACUUM_CLEANING:
+                self.running = True
+                await self._started(event.context)
+            return
+        if state in VACUUM_DONE:
+            # over only once it has stayed back, not when it washes its mop part way through
+            if self._pending != VACUUM_DONE:
+                self._wait(self._settled, VACUUM_DONE, event.context)
+        elif state == VACUUM_ERROR:
+            # stuck only if it stays so, since some integrations report a past error again on reconnecting, while
+            # the vacuum carries on, and an error once back on its dock is for its own app to tell
+            if self._pending is None:
+                self._wait(self._stuck_for_good, VACUUM_ERROR, event.context)
+        else:
+            # cleaning, paused or on its way back is the same cleaning
+            self._keep_running()
+
+    @callback
+    def _wait(
+        self, then: Callable[[Context, datetime], Coroutine[Any, Any, None]], kind: str | tuple[str, ...], context: Context
+    ) -> None:
+        self._keep_running()
+        self._pending = kind
+        self._cancel_end = async_call_later(self.hass, VACUUM_SETTLE, partial(then, context))
+
+    async def _settled(self, context: Context, now: datetime) -> None:
+        self._cancel_end = None
+        self._pending = None
+        self.running = False
+        await self._ended(True, _later(context))
+
+    async def _stuck_for_good(self, context: Context, now: datetime) -> None:
+        # stopped where it is, so no end to tell, only that it can't go on without someone
+        self._cancel_end = None
+        self._pending = None
+        self.running = False
+        await self._ended(False, _later(context))
+        await self._stuck(_later(context))
+
+    async def _stuck(self, context: Context) -> None:
+        stuck = STUCK_MESSAGES.get(self.hass.config.language.split("-")[0], STUCK_MESSAGES["en"])
+        message = stuck.replace(NAME_PLACEHOLDER, self.name)
+        title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
+        async with self._sending:
+            if supernotify_available(self.hass):
+                await self._supernotify(
+                    message, title, context, resend=True, extra_data={"notification_icon": self.icon} | self._tap_data()
+                )
+            else:
+                await self._send_message(message, title, context)

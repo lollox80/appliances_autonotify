@@ -21,7 +21,7 @@ in English only. Any other appliance can be added by hand if it has a power moni
 ## What You Need
 
 - Home Assistant 2026.7 or later
-- An appliance set up with the Home Connect integration, or one with a power sensor
+- An appliance set up with the Home Connect integration, a robot vacuum of any make, or an appliance with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification
 - Home Assistant app installed on an Apple mobile device, minimum iOS 17.2, or on an Android one, where a
@@ -51,6 +51,15 @@ and set up again.
 Turn *Set up appliances automatically* off, on the first screen or later from the settings of *Automatic discovery*,
 and appliances are instead offered as *Discovered* on the *Devices & services* page. Choose *Add* to set one up,
 or *Ignore* on any you don't want.
+
+### Robot Vacuums
+
+A robot vacuum of any make, through whichever integration Home Assistant has for it, is found and set up like a
+Home Connect appliance. Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its
+dock, or stopped by itself, for 10 minutes, so a vacuum that goes back to wash its mop part way through is still on the
+same cleaning. Paused, or on its way back, it's still the same cleaning too. One that stays in error for 10 minutes
+while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
+report a past error again for a while as they reconnect, with the vacuum carrying on.
 
 ### Power Monitored Appliances
 
@@ -160,6 +169,7 @@ used instead, as in "Washer" or "Kettle".
 - An appliance that stops without saying it has finished or been switched off is taken to be finished 10 seconds later, in case it carries on, as an oven does when its settings are changed
 - An oven has no pre-heating bar until Home Connect first reports its temperature, which isn't known after a restart of Home Assistant until the oven is next heating
 - Progress, time remaining and the program are only shown where the appliance reports them, so never for a power monitored appliance
+- A robot vacuum that goes back to its dock to recharge part way through, for longer than 10 minutes, has two cleanings told, since Home Assistant has no way to tell that dock from the last
 - If Home Assistant restarts while an oven is on, it isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature
 - An oven with no timer set reports its progress as 100%, so that is what the bar shows once it's up to heat
 
