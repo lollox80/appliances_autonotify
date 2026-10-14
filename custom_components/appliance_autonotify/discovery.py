@@ -104,7 +104,8 @@ def find_power_monitors(hass: HomeAssistant) -> list[PowerMonitor]:
 
 @callback
 def plug_switch(hass: HomeAssistant, power_entity_id: str) -> str | None:
-    """The switch of the device a power sensor is on, where it has only the one, so the plug the appliance is on"""
+    """The switch of the device a power sensor is on, where it has only the one, so the plug the appliance is on.
+    A setting, such as a dryer's own Wrinkle prevent, isn't a plug, so isn't counted"""
     entity_registry = er.async_get(hass)
     entity = entity_registry.async_get(power_entity_id)
     if entity is None or entity.device_id is None:
@@ -112,7 +113,7 @@ def plug_switch(hass: HomeAssistant, power_entity_id: str) -> str | None:
     switches = [
         switch.entity_id
         for switch in er.async_entries_for_device(entity_registry, entity.device_id)
-        if switch.domain == SWITCH_DOMAIN
+        if switch.domain == SWITCH_DOMAIN and switch.entity_category is None
     ]
     return switches[0] if len(switches) == 1 else None
 
