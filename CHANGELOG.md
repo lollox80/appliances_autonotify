@@ -1,6 +1,10 @@
 ---
 title: What's New
 ---
+# 0.8.2
+## 🐛 Fixes
+- Consistent naming as `appliance_autonotify`. No functional change.
+
 # 0.8.1
 ## ✨ Enhancements
 - Original Home Assistant [context](https://data.home-assistant.io/docs/context/) now propagated onto all downstream notification calls, so can be traced easily for example in State history
