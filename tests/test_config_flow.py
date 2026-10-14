@@ -10,6 +10,7 @@ from homeassistant.config_entries import (
     ConfigEntryDisabler,
     ConfigFlowResult,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from homeassistant.helpers import device_registry as dr
@@ -332,6 +333,17 @@ async def test_power_monitor_offered_once_named_for_an_appliance(hass: HomeAssis
     assert suggested(result) == {"name": "Potenza Forno", "power_entity": oven.entity_id}
     er.async_get(hass).async_remove(oven.entity_id)
     await hass.async_block_till_done()
+
+
+async def test_power_monitor_of_an_appliance_with_a_setting_switch(hass: HomeAssistant) -> None:
+    # a dryer measuring its own power, whose only switch is a setting of its own, not the plug it's on
+    sensor, _, device_id = add_power_monitor(hass, "Dryer", switch=False)
+    er.async_get(hass).async_get_or_create(
+        "switch", "shelly", "dryer-wrinkle", device_id=device_id, entity_category=EntityCategory.CONFIG
+    )
+    await start_discovery(hass)
+    result = await hass.config_entries.flow.async_configure(offered(hass)["Dryer"]["flow_id"])
+    assert suggested(result) == {"name": "Dryer", "power_entity": sensor}
 
 
 async def test_power_monitor_of_an_appliance_set_up_already(hass: HomeAssistant) -> None:
