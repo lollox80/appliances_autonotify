@@ -59,6 +59,11 @@ An appliance with no supported integration can be added if a sensor measures the
 1. On the integration's page, choose *Add service*
 2. Give the appliance a name, and choose its power sensor
 
+A power monitor named for a washing machine, dryer, dishwasher or oven, such as a smart plug called *Washing machine*
+or *Lavatrice*, is found by itself and offered as *Discovered*, with its sensor and plug already filled in. It's never
+set up without asking, even with *Set up appliances automatically* on, since a name is only a guess, and the threshold
+is worth checking first. Estimated or derived power sensors, such as Powercalc's, are left out.
+
 | Setting         | Default    | What it does                                                                              |
 | --------------- | ---------- | ----------------------------------------------------------------------------------------- |
 | Power threshold | 1 W        | The appliance is running while it draws more than this                                    |

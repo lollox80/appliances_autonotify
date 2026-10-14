@@ -66,7 +66,7 @@ from .const import (
     TYPE_POWER,
 )
 from .dashboards import dashboards
-from .discovery import find_appliances
+from .discovery import find_appliances, plug_switch
 from .supernotify_api import deliveries_by_transport, supernotify_available
 
 STEP_POWER = "power"
@@ -198,6 +198,8 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._device_id: str | None = None
         self._name: str = ""
+        # a power monitor found by its name, to be filled in on the form for a look before it's set up
+        self._power: dict[str, Any] = {}
 
     @staticmethod
     @callback
@@ -235,7 +237,13 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={CONF_TYPE: TYPE_POWER},
                 options={k: v for k, v in user_input.items() if k != CONF_NAME},
             )
-        return self.async_show_form(step_id=STEP_POWER, data_schema=power_schema(with_name=True))
+        schema = power_schema(with_name=True)
+        if self._power:
+            # looked for only now, since a plug's switch can be added after its sensor
+            switch = plug_switch(self.hass, self._power[CONF_POWER_ENTITY])
+            suggested = self._power | ({CONF_SWITCH_ENTITY: switch} if switch else {})
+            schema = self.add_suggested_values_to_schema(schema, suggested)
+        return self.async_show_form(step_id=STEP_POWER, data_schema=schema)
 
     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
         """An appliance found with automatic discovery on, so set up without asking"""
@@ -245,7 +253,13 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(title=import_data[CONF_NAME], data={CONF_DEVICE_ID: import_data[CONF_DEVICE_ID]})
 
     async def async_step_integration_discovery(self, discovery_info: dict[str, Any]) -> ConfigFlowResult:
-        """An appliance found with automatic discovery off, so offered to be added"""
+        """An appliance found with automatic discovery off, or a power monitor named for one, so offered to be added"""
+        if CONF_POWER_ENTITY in discovery_info:
+            self._power = dict(discovery_info)
+            await self.async_set_unique_id(discovery_info[CONF_POWER_ENTITY])
+            self._abort_if_unique_id_configured()
+            self.context["title_placeholders"] = {"name": discovery_info[CONF_NAME]}
+            return await self.async_step_power()
         self._device_id = discovery_info[CONF_DEVICE_ID]
         self._name = discovery_info[CONF_NAME]
         await self.async_set_unique_id(self._device_id)

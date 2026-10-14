@@ -207,3 +207,19 @@ ICONS: Final[dict[str, str]] = {
     "vacuum": "mdi:robot-vacuum",
     "kettle": "mdi:kettle",
 }
+# a power monitor is offered as an appliance when its name gives it one of these icons, those of appliances that run
+# in cycles worth being told of, where a kettle or a coffee maker is done in a minute or two
+CYCLE_ICONS: Final[tuple[str, ...]] = ("mdi:dishwasher", "mdi:washing-machine", "mdi:tumble-dryer", "mdi:stove")
+# platforms whose power sensors are estimated or worked out from others, so never the appliance's own measurement,
+# such as the standby draw Powercalc adds to a smart plug's device
+DERIVED_POWER_PLATFORMS: Final[tuple[str, ...]] = (
+    "powercalc",
+    "template",
+    "integration",
+    "utility_meter",
+    "group",
+    "min_max",
+    "statistics",
+    "derivative",
+    "filter",
+)

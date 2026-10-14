@@ -4,7 +4,7 @@
         "step": {
             "user": {
                 "title": "Notifiche degli elettrodomestici",
-                "description": "{supernotify}\n\n{found}\n\nVengono rilevati automaticamente solo gli elettrodomestici Home Connect (Bosch, Siemens, Neff). Quelli collegati a un misuratore di potenza non vengono rilevati, ma si possono aggiungere a mano una volta completata l'installazione.",
+                "description": "{supernotify}\n\n{found}\n\nGli elettrodomestici Home Connect (Bosch, Siemens, Neff) vengono rilevati automaticamente. Un misuratore di potenza che ha nel nome lavatrice, asciugatrice, lavastoviglie o forno, ad esempio una presa smart chiamata \"Lavatrice\", viene proposto tra i *Rilevati*, per controllare la soglia prima di aggiungerlo. Gli altri elettrodomestici collegati a un misuratore di potenza si possono aggiungere a mano una volta completata l'installazione.",
                 "data": {
                     "auto_discover": "Configura gli elettrodomestici in automatico"
                 },

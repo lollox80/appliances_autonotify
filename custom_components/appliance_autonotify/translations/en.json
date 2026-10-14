@@ -4,7 +4,7 @@
         "step": {
             "user": {
                 "title": "Appliance notifications",
-                "description": "{supernotify}\n\n{found}\n\nOnly Home Connect (Bosch, Siemens, Neff) appliances are discovered automatically. Power monitored appliances aren't automatically discovered, but can be set up manually once the installation is complete.",
+                "description": "{supernotify}\n\n{found}\n\nHome Connect (Bosch, Siemens, Neff) appliances are discovered automatically. A power monitor named for a washing machine, dryer, dishwasher or oven, such as a \"Washing machine\" smart plug, is offered as *Discovered*, to check the threshold before it's added. Any other appliance on a power monitor can be set up manually once the installation is complete.",
                 "data": {
                     "auto_discover": "Set up appliances automatically"
                 },
