@@ -5,7 +5,7 @@ readme = "README.md"
 dynamic = ["version"]
 requires-python = ">=3.14.2"
 dependencies = [
-    "homeassistant>=2026.9.3",
+    "homeassistant>=2026.4.0",
 ]
 
 [dependency-groups]
@@ -19,7 +19,6 @@ dev = [
     "ruff",
     "codespell",
     "mypy",
-    "voluptuous-stubs>=0.1.1",
     "homeassistant-repl",
     "genbadge[all]",
     "ty"

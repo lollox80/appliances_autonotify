@@ -621,6 +621,8 @@ async def test_first_progress_waits_for_the_live_activity_to_open(hass: HomeAssi
     # as Home Connect tells it, the progress coming moments after the cycle starts
     with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0.2):
         hass.states.async_set(appliance.cycle, "run")
+        # a turn of the loop between, else HA before 2026.10 has both states set before telling of either
+        await asyncio.sleep(0)
         hass.states.async_set(appliance.progress, "0")
         await asyncio.sleep(0.05)
         assert [call.data["message"] for call in calls] == ["Dishwasher started"]
@@ -1281,6 +1283,8 @@ async def test_context_of_its_own_when_a_timer_ends_the_cycle(hass: HomeAssistan
     dropped = Context()
     await set_state(hass, "sensor.washer_power", "1800")
     hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"}, context=dropped)
+    # the change handled before time moves on, which HA before 2026.10 leaves to a later turn of the loop
+    await hass.async_block_till_done()
     freezer.tick(60)
     await pass_time(hass, 0)
 

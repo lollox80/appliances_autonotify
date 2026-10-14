@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-import voluptuous as vol
 from homeassistant.config_entries import (
     SOURCE_INTEGRATION_DISCOVERY,
     SOURCE_USER,
@@ -16,6 +15,7 @@ from homeassistant.data_entry_flow import FlowResultType, InvalidData
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 
+from custom_components.appliance_autonotify.compat import vol
 from custom_components.appliance_autonotify.const import DOMAIN, SUPERNOTIFY_MISSING, SUPERNOTIFY_PRESENT
 
 from .conftest import add_appliance, mock_dashboard, mock_dashboards, mock_supernotify, setup_watcher

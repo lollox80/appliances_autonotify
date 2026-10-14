@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_DEVICE_ID, CONF_NAME, CONF_TYPE, UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
@@ -25,6 +24,7 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 
+from .compat import vol
 from .const import (
     CONF_AUTO_DISCOVER,
     CONF_CUSTOM_TARGET,
