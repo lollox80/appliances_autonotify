@@ -70,7 +70,6 @@ from .const import (
     FAST_PREHEAT_KEY,
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
-    ICONS,
     LIVE_SETTLE,
     LIVE_TITLE,
     MOBILE_ACTION_EVENT,
@@ -106,6 +105,7 @@ from .const import (
 )
 from .dashboards import dashboard_url
 from .supernotify_api import deliveries_by_transport, supernotify_available
+from .words import name_type
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -173,7 +173,7 @@ class ApplianceWatcher:
             self._cancel_end = None
 
     def _name_icon(self) -> str:
-        return next((icon for word, icon in ICONS.items() if word in self.name.lower()), DEFAULT_ICON)
+        return TYPE_ICONS.get(name_type(self.hass, self.name) or "", DEFAULT_ICON)
 
     @staticmethod
     def _mark(progress: int) -> int:

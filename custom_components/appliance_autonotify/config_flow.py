@@ -237,13 +237,15 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={CONF_TYPE: TYPE_POWER},
                 options={k: v for k, v in user_input.items() if k != CONF_NAME},
             )
-        schema = power_schema(with_name=True)
         if self._power:
             # looked for only now, since a plug's switch can be added after its sensor
             switch = plug_switch(self.hass, self._power[CONF_POWER_ENTITY])
             suggested = self._power | ({CONF_SWITCH_ENTITY: switch} if switch else {})
-            schema = self.add_suggested_values_to_schema(schema, suggested)
-        return self.async_show_form(step_id=STEP_POWER, data_schema=schema)
+            return self.async_show_form(
+                step_id=STEP_POWER,
+                data_schema=self.add_suggested_values_to_schema(power_schema(with_name=True), suggested),
+            )
+        return self.async_show_form(step_id=STEP_POWER, data_schema=power_schema(with_name=True))
 
     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
         """An appliance found with automatic discovery on, so set up without asking"""

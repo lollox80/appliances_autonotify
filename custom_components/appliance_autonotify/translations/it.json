@@ -137,5 +137,22 @@
                 }
             }
         }
+    },
+    "selector": {
+        "appliance_words": {
+            "options": {
+                "dishwasher": "lavastoviglie",
+                "washer": "lavatrice",
+                "washer_dryer": "lavasciuga",
+                "dryer": "asciugatrice",
+                "oven": "forno",
+                "microwave": "microonde",
+                "hob": "piano cottura",
+                "hood": "cappa",
+                "coffee_maker": "caffè, caffe",
+                "cleaning_robot": "aspirapolvere",
+                "kettle": "bollitore"
+            }
+        }
     }
 }

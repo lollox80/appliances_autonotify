@@ -15,13 +15,13 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     CONF_AUTO_DISCOVER,
     CONF_POWER_ENTITY,
-    CYCLE_ICONS,
     CYCLE_KEYS,
+    CYCLE_TYPES,
     DERIVED_POWER_PLATFORMS,
     DOMAIN,
-    ICONS,
     TYPE_DISCOVERY,
 )
+from .words import name_type
 
 if TYPE_CHECKING:
     from homeassistant.helpers.device_registry import EventDeviceRegistryUpdatedData
@@ -73,10 +73,9 @@ def is_power_sensor(entity: er.RegistryEntry) -> bool:
     )
 
 
-def names_cycle_appliance(name: str) -> bool:
+def names_cycle_appliance(hass: HomeAssistant, name: str) -> bool:
     """Whether a name is that of an appliance that runs in cycles, by the same words that choose its icon"""
-    icon = next((icon for word, icon in ICONS.items() if word in name.lower()), None)
-    return icon in CYCLE_ICONS
+    return name_type(hass, name) in CYCLE_TYPES
 
 
 @callback
@@ -95,7 +94,7 @@ def find_power_monitors(hass: HomeAssistant) -> list[PowerMonitor]:
             continue
         device_name = (device.name_by_user or device.name or "") if device is not None else ""
         entity_name = entity.name or entity.original_name or ""
-        if not names_cycle_appliance(f"{device_name} {entity_name}"):
+        if not names_cycle_appliance(hass, f"{device_name} {entity_name}"):
             continue
         found[device.id if device is not None else entity.entity_id] = PowerMonitor(
             entity.entity_id, device_name or entity_name or entity.entity_id

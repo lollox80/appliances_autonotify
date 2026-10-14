@@ -137,5 +137,22 @@
                 }
             }
         }
+    },
+    "selector": {
+        "appliance_words": {
+            "options": {
+                "dishwasher": "dishwasher, dish washer",
+                "washer": "washing machine, washer, wash",
+                "washer_dryer": "washer dryer, washer-dryer",
+                "dryer": "dryer, tumble dryer",
+                "oven": "oven",
+                "microwave": "microwave",
+                "hob": "hob, cooktop",
+                "hood": "hood, extractor",
+                "coffee_maker": "coffee",
+                "cleaning_robot": "vacuum",
+                "kettle": "kettle"
+            }
+        }
     }
 }

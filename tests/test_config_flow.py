@@ -302,11 +302,15 @@ async def test_power_monitor_named_for_an_appliance_is_offered(hass: HomeAssista
 
 
 async def test_power_monitor_offered_once_named_for_an_appliance(hass: HomeAssistant) -> None:
-    # an Italian name, on a plug with more than one switch, so none is chosen for it
+    # an Italian name in an Italian Home Assistant, on a plug with more than one switch, so none is chosen for it
+    hass.config.language = "it"
     sensor, _, device_id = add_power_monitor(hass, "Presa 3")
+    # English names too, whatever the language, and the longest word wins, so a microwave oven isn't an oven
+    add_power_monitor(hass, "Washer plug")
+    add_power_monitor(hass, "Forno a microonde")
     er.async_get(hass).async_get_or_create("switch", "shelly", "presa_3-switch-2", device_id=device_id)
     await start_discovery(hass)
-    assert offered(hass) == {}
+    assert list(offered(hass)) == ["Washer plug"]
 
     dr.async_get(hass).async_update_device(device_id, name_by_user="Presa Lavastoviglie")
     await hass.async_block_till_done()
@@ -317,7 +321,7 @@ async def test_power_monitor_offered_once_named_for_an_appliance(hass: HomeAssis
     # one offer for each sensor, however many times the device changes
     dr.async_get(hass).async_update_device(device_id, name_by_user="Lavastoviglie")
     await hass.async_block_till_done()
-    assert len(hass.config_entries.flow.async_progress_by_handler(DOMAIN)) == 1
+    assert len(hass.config_entries.flow.async_progress_by_handler(DOMAIN)) == 2
 
     # a sensor of no device goes by its own name, and has no plug
     oven = er.async_get(hass).async_get_or_create(

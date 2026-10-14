@@ -3,7 +3,7 @@ title: What's New
 ---
 # 0.8.3
 ## 🐛 Fixes
-- Cross compatbility with `voluptuous` and `probatio` to be
+- Cross compatibility with `voluptuous` and `probatio` to be
 able to support Home Assistant from 2026.4 to 2026.10
 - Automated build now covers the full range of HA versions
 
