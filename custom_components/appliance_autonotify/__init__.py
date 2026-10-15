@@ -10,6 +10,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import DOMAIN, TYPE_DISCOVERY, TYPE_POWER
 from .discovery import async_discover, async_start_discovery
 from .watcher import ApplianceWatcher, HomeConnectWatcher, PowerWatcher
+from .words import async_load_words
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -22,6 +23,7 @@ type AppliancesConfigEntry = ConfigEntry[ApplianceWatcher]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    await async_load_words(hass)
     async_start_discovery(hass)
     return True
 

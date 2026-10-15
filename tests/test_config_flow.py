@@ -10,10 +10,13 @@ from homeassistant.config_entries import (
     ConfigEntryDisabler,
     ConfigFlowResult,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.appliance_autonotify.compat import vol
 from custom_components.appliance_autonotify.const import DOMAIN, SUPERNOTIFY_MISSING, SUPERNOTIFY_PRESENT
@@ -218,6 +221,145 @@ async def test_power_flow(hass: HomeAssistant) -> None:
     assert entry.options == {"end_message": "Hang out the washing", **power, **plug, "threshold": 3}
     assert entry.runtime_data.threshold == 3
     assert entry.runtime_data.switch_entity_id is None
+
+
+def add_power_monitor(
+    hass: HomeAssistant,
+    name: str,
+    platform: str = "shelly",
+    unit: str = "W",
+    switch: bool = True,
+) -> tuple[str, str | None, str]:
+    """Register a smart plug measuring power as its integration would, returning its sensor, switch and device"""
+    slug = name.lower().replace(" ", "_")
+    source = MockConfigEntry(domain=platform, entry_id=f"{platform}_{slug}")
+    source.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=source.entry_id, identifiers={(platform, slug)}, name=name)
+    entity_registry = er.async_get(hass)
+    sensor = entity_registry.async_get_or_create(
+        "sensor",
+        platform,
+        f"{slug}-power",
+        suggested_object_id=f"{slug}_power",
+        device_id=device.id,
+        config_entry=source,
+        original_device_class="power",
+        original_name="Power",
+        unit_of_measurement=unit,
+    ).entity_id
+    switch_id = None
+    if switch:
+        switch_id = entity_registry.async_get_or_create(
+            "switch", platform, f"{slug}-switch", suggested_object_id=slug, device_id=device.id, config_entry=source
+        ).entity_id
+    return sensor, switch_id, device.id
+
+
+def offered(hass: HomeAssistant) -> dict[str, ConfigFlowResult]:
+    """Flows waiting as discovered, by the name they're offered with"""
+    return {
+        flow["context"]["title_placeholders"]["name"]: flow
+        for flow in hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+        if flow["context"]["source"] == SOURCE_INTEGRATION_DISCOVERY
+    }
+
+
+async def test_power_monitor_named_for_an_appliance_is_offered(hass: HomeAssistant) -> None:
+    await start_discovery(hass)
+    washer, plug, _ = add_power_monitor(hass, "Washing Machine Plug")
+    # not an appliance that runs in cycles, or with no name to tell
+    add_power_monitor(hass, "Kettle")
+    add_power_monitor(hass, "Smart Plug 2")
+    # Powercalc's estimate of a plug's own standby, which has the name of the plug, and power not in watts
+    add_power_monitor(hass, "Dishwasher Plug", platform="powercalc")
+    add_power_monitor(hass, "Oven", unit="kW")
+    await hass.async_block_till_done()
+
+    # only ever offered, even with automatic discovery on, since a name is a guess
+    assert appliances(hass) == {}
+    flows = offered(hass)
+    assert list(flows) == ["Washing Machine Plug"]
+    flow = flows["Washing Machine Plug"]
+    assert flow["step_id"] == "power"
+    assert flow["context"]["unique_id"] == washer
+
+    # the form is filled in from the plug, to check the threshold before it's added
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"])
+    assert result["step_id"] == "power"
+    assert suggested(result) == {"name": "Washing Machine Plug", "power_entity": washer, "switch_entity": plug}
+    power = {"power_entity": washer, "threshold": 5, "grace_period": 60, "min_duration": 0, "switch_entity": plug}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"name": "Washing machine", **power})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {"type": "power"}
+    assert result["options"] == power | {"switch_off_button": True}
+    await hass.async_block_till_done()
+    assert appliances(hass) == {washer: "Washing machine"}
+
+    # and not offered again once set up
+    discovery = next(e for e in hass.config_entries.async_entries(DOMAIN) if e.data.get("type") == "discovery")
+    await hass.config_entries.async_reload(discovery.entry_id)
+    await hass.async_block_till_done()
+    assert offered(hass) == {}
+
+
+async def test_power_monitor_offered_once_named_for_an_appliance(hass: HomeAssistant) -> None:
+    # an Italian name in an Italian Home Assistant, on a plug with more than one switch, so none is chosen for it
+    hass.config.language = "it"
+    sensor, _, device_id = add_power_monitor(hass, "Presa 3")
+    # English names too, whatever the language, and the longest word wins, so a microwave oven isn't an oven
+    add_power_monitor(hass, "Washer plug")
+    add_power_monitor(hass, "Forno a microonde")
+    er.async_get(hass).async_get_or_create("switch", "shelly", "presa_3-switch-2", device_id=device_id)
+    await start_discovery(hass)
+    assert list(offered(hass)) == ["Washer plug"]
+
+    dr.async_get(hass).async_update_device(device_id, name_by_user="Presa Lavastoviglie")
+    await hass.async_block_till_done()
+    flow = offered(hass)["Presa Lavastoviglie"]
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"])
+    assert suggested(result) == {"name": "Presa Lavastoviglie", "power_entity": sensor}
+
+    # one offer for each sensor, however many times the device changes
+    dr.async_get(hass).async_update_device(device_id, name_by_user="Lavastoviglie")
+    await hass.async_block_till_done()
+    assert len(hass.config_entries.flow.async_progress_by_handler(DOMAIN)) == 2
+
+    # a sensor of no device goes by its own name, and has no plug
+    oven = er.async_get(hass).async_get_or_create(
+        "sensor", "mqtt", "forno-w", original_name="Potenza Forno", original_device_class="power", unit_of_measurement="W"
+    )
+    await hass.async_block_till_done()
+    result = await hass.config_entries.flow.async_configure(offered(hass)["Potenza Forno"]["flow_id"])
+    assert suggested(result) == {"name": "Potenza Forno", "power_entity": oven.entity_id}
+    er.async_get(hass).async_remove(oven.entity_id)
+    await hass.async_block_till_done()
+
+
+async def test_power_monitor_of_an_appliance_with_a_setting_switch(hass: HomeAssistant) -> None:
+    # a dryer measuring its own power, whose only switch is a setting of its own, not the plug it's on
+    sensor, _, device_id = add_power_monitor(hass, "Dryer", switch=False)
+    er.async_get(hass).async_get_or_create(
+        "switch", "shelly", "dryer-wrinkle", device_id=device_id, entity_category=EntityCategory.CONFIG
+    )
+    await start_discovery(hass)
+    result = await hass.config_entries.flow.async_configure(offered(hass)["Dryer"]["flow_id"])
+    assert suggested(result) == {"name": "Dryer", "power_entity": sensor}
+
+
+async def test_power_monitor_of_an_appliance_set_up_already(hass: HomeAssistant) -> None:
+    # a dishwasher of its own integration, whose device also has a power sensor
+    appliance = add_appliance(hass, name="Dishwasher")
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        "home_connect",
+        "BOSCH-1-power",
+        device_id=appliance.device_id,
+        original_device_class="power",
+        unit_of_measurement="W",
+    )
+    await start_discovery(hass)
+    assert appliances(hass) == {appliance.device_id: "Dishwasher"}
+    assert offered(hass) == {}
 
 
 async def test_settings_without_supernotify(hass: HomeAssistant) -> None:

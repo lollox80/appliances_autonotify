@@ -1230,6 +1230,8 @@ async def test_reminders_stop_when_unloaded(hass: HomeAssistant, freezer) -> Non
 
 
 async def test_icon_follows_an_italian_name(hass: HomeAssistant) -> None:
+    # the words of the language Home Assistant is in, from the translations
+    hass.config.language = "it"
     calls = mock_supernotify(hass)
     hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
     await setup_power_watcher(hass, "Lavastoviglie cucina")

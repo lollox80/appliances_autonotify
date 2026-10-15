@@ -177,33 +177,26 @@ TYPE_ICONS: Final[dict[str, str]] = {
     "coffee_maker": "mdi:coffee-maker",
     "cleaning_robot": "mdi:robot-vacuum",
     "air_conditioner": "mdi:air-conditioner",
+    # types known only from the name
+    "microwave": "mdi:microwave",
+    "kettle": "mdi:kettle",
 }
 # the types whose phases are worth a notification unless it's turned off, an oven up to heat being waited
 # for where a dishwasher starting to rinse isn't
 PHASES_NOTIFIED: Final[tuple[str, ...]] = (TYPE_OVEN,)
-# matched against the device name where the type isn't known, first hit wins
-ICONS: Final[dict[str, str]] = {
-    "dishwasher": "mdi:dishwasher",
-    # Italian names
-    "lavastoviglie": "mdi:dishwasher",
-    "lavasciuga": "mdi:washing-machine",
-    "lavatrice": "mdi:washing-machine",
-    "asciugatrice": "mdi:tumble-dryer",
-    "microonde": "mdi:microwave",
-    "forno": "mdi:stove",
-    "caffè": "mdi:coffee-maker",
-    "caffe": "mdi:coffee-maker",
-    "cappa": "mdi:fan",
-    "piano cottura": "mdi:pot-steam",
-    "aspirapolvere": "mdi:robot-vacuum",
-    "bollitore": "mdi:kettle",
-    "dryer": "mdi:tumble-dryer",
-    "wash": "mdi:washing-machine",
-    "oven": "mdi:stove",
-    "microwave": "mdi:microwave",
-    "coffee": "mdi:coffee-maker",
-    "hood": "mdi:fan",
-    "hob": "mdi:pot-steam",
-    "vacuum": "mdi:robot-vacuum",
-    "kettle": "mdi:kettle",
-}
+# a power monitor is offered as an appliance when its name says it's one of these, appliances that run in cycles
+# worth being told of, where a kettle or a coffee maker is done in a minute or two
+CYCLE_TYPES: Final[tuple[str, ...]] = ("dishwasher", "washer", "washer_dryer", "dryer", TYPE_OVEN)
+# platforms whose power sensors are estimated or worked out from others, so never the appliance's own measurement,
+# such as the standby draw Powercalc adds to a smart plug's device
+DERIVED_POWER_PLATFORMS: Final[tuple[str, ...]] = (
+    "powercalc",
+    "template",
+    "integration",
+    "utility_meter",
+    "group",
+    "min_max",
+    "statistics",
+    "derivative",
+    "filter",
+)
