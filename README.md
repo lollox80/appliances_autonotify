@@ -21,7 +21,8 @@ in English only. Any other appliance can be added by hand if it has a power moni
 ## What You Need
 
 - Home Assistant 2026.7 or later
-- An appliance set up with the Home Connect integration, a robot vacuum of any make, or an appliance with a power sensor
+- An appliance set up with the Home Connect integration, a robot vacuum of any make, a Bambu Lab 3D printer set up
+  with [ha-bambulab](https://github.com/greghesp/ha-bambulab), or an appliance with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification
 - Home Assistant app installed on an Apple mobile device, minimum iOS 17.2, or on an Android one, where a
@@ -60,6 +61,14 @@ dock, or stopped by itself, for 10 minutes, so a vacuum that goes back to wash i
 same cleaning. Paused, or on its way back, it's still the same cleaning too. One that stays in error for 10 minutes
 while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
 report a past error again for a while as they reconnect, with the vacuum carrying on.
+
+### 3D Printers
+
+A Bambu Lab printer set up with [ha-bambulab](https://github.com/greghesp/ha-bambulab) is found and set up like a
+Home Connect appliance, with each print as the cycle. It starts as the printer gets ready, heating and levelling its
+bed, and the Live Activity tells what it's doing at each stage, counting down to the end from the time left, which
+stops while the print is paused. The name of the print fills in `{program}`, but isn't put in the title. A finished print is told as for any appliance, a failed or cancelled one only has its Live
+Activity closed. The printer going offline for a while leaves the print as it was.
 
 ### Power Monitored Appliances
 
