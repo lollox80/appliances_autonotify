@@ -113,11 +113,18 @@ VACUUM_BLIP_KIND: Final[str] = "blip"
 # how long such a report is left before the cleaning is taken to be over, with nothing else heard from the vacuum
 VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
 # translation key, per vendor platform, of the entity whose state follows the appliance cycle
-CYCLE_KEYS: Final[dict[str, str]] = {"home_connect": "operation_state"}
+CYCLE_KEYS: Final[dict[str, str]] = {"home_connect": "operation_state", "bambu_lab": "print_status"}
 PROGRESS_KEY: Final[str] = "program_progress"
+# the time left, which where an appliance reports it is fresher than its finish time, and is how that's worked out
+REMAINING_KEY: Final[str] = "remaining_time"
 FINISH_TIME_KEY: Final[str] = "program_finish_time"
 # selects, unlike the others, of the program under way, and of the one chosen, which is all an oven reports
-PROGRAM_KEYS: Final[tuple[str, ...]] = ("active_program", "selected_program")
+SELECTED_PROGRAM_KEYS: Final[tuple[str, ...]] = ("active_program", "selected_program")
+# the name of the print under way, which is to a 3D printer what the program is to an appliance
+TASK_KEY: Final[str] = "subtask_name"
+PROGRAM_KEYS: Final[tuple[str, ...]] = (*SELECTED_PROGRAM_KEYS, TASK_KEY)
+# what a 3D printer is doing, from heating its bed to printing, said alongside the bar
+STAGE_KEY: Final[str] = "stage"
 # an oven warming up has no progress of its own, only how hot it is and how hot it's to be
 TARGET_TEMPERATURE_KEY: Final[str] = "setpoint_temperature"
 CAVITY_TEMPERATURE_KEY: Final[str] = "oven_current_cavity_temperature"
@@ -127,12 +134,21 @@ FAST_PREHEAT_KEY: Final[str] = "fast_pre_heat"
 ENTITY_DOMAINS: Final[dict[str, str]] = {
     PROGRESS_KEY: "sensor",
     FINISH_TIME_KEY: "sensor",
-    **dict.fromkeys(PROGRAM_KEYS, "select"),
+    REMAINING_KEY: "sensor",
+    **dict.fromkeys(SELECTED_PROGRAM_KEYS, "select"),
+    TASK_KEY: "sensor",
+    STAGE_KEY: "sensor",
     TARGET_TEMPERATURE_KEY: "number",
     CAVITY_TEMPERATURE_KEY: "sensor",
     **dict.fromkeys(PREHEAT_FINISHED_KEYS, "sensor"),
     FAST_PREHEAT_KEY: "switch",
 }
+# translation keys of a vendor platform for the entities named otherwise by Home Connect
+VENDOR_KEYS: Final[dict[str, dict[str, str]]] = {
+    "bambu_lab": {"print_progress": PROGRESS_KEY, "end_time": FINISH_TIME_KEY},
+}
+# the type of appliance of a platform that has only the one
+PLATFORM_TYPES: Final[dict[str, str]] = {"bambu_lab": "3d_printer"}
 # degrees between Live Activity updates of an oven up to heat, whose temperature never stops wandering
 TEMPERATURE_STEP: Final[float] = 5
 # seconds before an oven saying it's up to heat is believed, since one switched off says so too, just before it's off
@@ -140,20 +156,27 @@ PREHEAT_SETTLE: Final[float] = 3
 # an event sensor is `off` until whatever it tells of has happened
 STATES_EVENT_ON: Final[tuple[str, ...]] = ("present", "confirmed", "on")
 
-STATE_RUN: Final[str] = "run"
+# the cycle has started, a 3D printer first heating up and levelling its bed as it gets ready to print
+STATES_RUN: Final[tuple[str, ...]] = ("run", "prepare", "running")
 # a cycle already under way, so not a new start when `run` follows
-STATES_ACTIVE: Final[tuple[str, ...]] = ("run", "pause", "actionrequired")
+STATES_ACTIVE: Final[tuple[str, ...]] = (*STATES_RUN, "pause", "actionrequired")
 # the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`
-STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive")
-# over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed
-STATES_SETTLING: Final[tuple[str, ...]] = ("ready",)
+STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "finish")
+# over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed,
+# and a 3D printer `idle` with no word of how its print ended
+STATES_SETTLING: Final[tuple[str, ...]] = ("ready", "idle")
+# paused part way through, with the time left standing still
+STATES_PAUSED: Final[tuple[str, ...]] = ("pause",)
+# seconds the finish time can drift from the one on the Live Activity before it's brought up to date, since the time
+# left may be counted only in whole minutes
+FINISH_DRIFT: Final[float] = 120
 # seconds an appliance is left to settle before the cycle is over
 CYCLE_SETTLE: Final[float] = 10
 # seconds a Live Activity is left to open before anything more is sent to it, since a push sent straight after the
 # start can reach a phone ahead of it, and then be overwritten by the start, with no bar and no program
 LIVE_SETTLE: Final[float] = 5
 # the cycle is over without finishing, so the Live Activity goes without an end notification
-STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting")
+STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting", "failed")
 
 # percentage points between Live Activity updates, since mobile platforms throttle frequent ones
 PROGRESS_STEP: Final[int] = 5
@@ -196,6 +219,7 @@ TYPE_ICONS: Final[dict[str, str]] = {
     "coffee_maker": "mdi:coffee-maker",
     "cleaning_robot": "mdi:robot-vacuum",
     "air_conditioner": "mdi:air-conditioner",
+    "3d_printer": "mdi:printer-3d",
     # types known only from the name
     "microwave": "mdi:microwave",
     "kettle": "mdi:kettle",
