@@ -579,9 +579,15 @@ async def test_tap_opens_chosen_dashboard(hass: HomeAssistant) -> None:
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.progress, "10")
     await set_state(hass, appliance.cycle, "finished")
-    tap = {"url": "/dashboard-kitchen", "clickAction": "/dashboard-kitchen"}
+    tap = {"level": "notification", "uri": "/dashboard-kitchen"}
     # the start, each update of the Live Activity since iOS forgets otherwise, and the end, but not the clearing
-    assert [{k: v for k, v in c.data.get("extra_data", {}).items() if k in tap} for c in calls] == [tap, tap, {}, tap]
+    assert [[a for a in c.data.get("actions", []) if a.get("level") == "notification"] for c in calls] == [
+        [tap],
+        [tap],
+        [],
+        [tap],
+    ]
+    assert not any(key in call.data.get("extra_data", {}) for call in calls for key in ("url", "clickAction"))
 
 
 async def test_tap_goes_nowhere_but_a_dashboard(hass: HomeAssistant) -> None:
@@ -594,7 +600,7 @@ async def test_tap_goes_nowhere_but_a_dashboard(hass: HomeAssistant) -> None:
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.cycle, "finished")
     assert len(calls) == 3
-    assert not any(key in call.data.get("extra_data", {}) for call in calls for key in ("url", "clickAction"))
+    assert not any(action.get("level") == "notification" for call in calls for action in call.data.get("actions", []))
 
 
 async def test_progress_known_at_start_is_not_repeated(hass: HomeAssistant) -> None:

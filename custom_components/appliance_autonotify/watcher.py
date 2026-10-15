@@ -224,7 +224,9 @@ class ApplianceWatcher:
                 await self._send_message(message, title, context)
         elif ordinary:
             # everywhere, opening or updating the Live Activity on phones as it goes
-            await self._supernotify(message, title, context, resend=resend, extra_data=self._live_data())
+            await self._supernotify(
+                message, title, context, resend=resend, extra_data=self._live_data(), actions=self._tap_actions()
+            )
         else:
             data = self._live_data()
             if self.program_in_title and "when" in data and (phase := self._phase()) and phase not in title:
@@ -234,7 +236,13 @@ class ApplianceWatcher:
                     message = self._progress_message(progress)
             # with nothing to hear, and nothing sent anywhere but to phones
             await self._supernotify(
-                message, title, context, mobile_only=True, extra_data=data | {"silent": True, "alert_once": True}
+                message,
+                title,
+                context,
+                mobile_only=True,
+                extra_data=data | {"silent": True, "alert_once": True},
+                # iOS forgets where a tap goes unless told again on every update
+                actions=self._tap_actions(),
             )
 
     async def _ended(self, finished: bool, context: Context) -> None:
@@ -268,8 +276,8 @@ class ApplianceWatcher:
             self._text(CONF_END_TITLE, DEFAULT_TITLE),
             context,
             resend=resend,
-            actions=self._end_actions(),
-            extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag} | self._tap_data(),
+            actions=self._end_actions() + self._tap_actions(),
+            extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag},
         )
 
     def _end_actions(self) -> list[dict[str, str]]:
@@ -374,10 +382,11 @@ class ApplianceWatcher:
             return state.state
         return async_translate_state(self.hass, state.state, state.domain, entity.platform, entity.translation_key, None)
 
-    def _tap_data(self) -> dict[str, Any]:
-        """Where a tap on the notification goes, for both mobile platforms, if a dashboard has been chosen"""
+    def _tap_actions(self) -> list[dict[str, str]]:
+        """Where a tap on the notification goes, if a dashboard has been chosen, as a notification level action
+        that Supernotify sends as `url` to iOS and `clickAction` to Android"""
         url = dashboard_url(self.hass, self.entry.options.get(CONF_DASHBOARD))
-        return {"url": url, "clickAction": url} if url else {}
+        return [{"level": "notification", "uri": url}] if url else []
 
     def _live_data(self) -> dict[str, Any]:
         """Live Activity fields for the mobile app, leaving out whatever the appliance isn't reporting"""
@@ -390,7 +399,7 @@ class ApplianceWatcher:
             "channel": ANDROID_CHANNEL,
             "importance": "high",
             "sticky": True,
-        } | self._tap_data()
+        }
         progress = self._progress()
         if progress is not None:
             data["progress"] = progress
@@ -633,7 +642,12 @@ class HomeConnectWatcher(ApplianceWatcher):
             elif supernotify_available(self.hass):
                 # a notification of its own, so that it isn't lost as the Live Activity moves on
                 await self._supernotify(
-                    message, title, context, resend=True, extra_data={"notification_icon": self.icon} | self._tap_data()
+                    message,
+                    title,
+                    context,
+                    resend=True,
+                    extra_data={"notification_icon": self.icon},
+                    actions=self._tap_actions(),
                 )
             else:
                 await self._send_message(message, title, context)

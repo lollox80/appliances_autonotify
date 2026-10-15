@@ -88,8 +88,8 @@ Where the Companion docs and the app source disagree, the source is followed and
 | `color` | Accent colour, when `notification_icon_color` isn't set | Not used by Live Activities | No | |
 | `icon_url` | Large icon, on the right | On ordinary notifications, makes it a communication notification with the image as sender avatar | No | *Tested*, see Icons |
 | `image` | Big picture, which stops promotion | Attachment | No | Promotion only allows no style, BigText, Call, Metric or Progress styles |
-| `url` | Not read | Opens on a tap. Needed on every update | Yes, with a dashboard chosen | |
-| `clickAction` | Opens on a tap, `/` when missing | Not read | Yes, with a dashboard chosen | |
+| `url` | Not read | Opens on a tap. Needed on every update | Yes, with a dashboard chosen, by Supernotify from a notification level action | |
+| `clickAction` | Opens on a tap, `/` when missing | Not read | Yes, with a dashboard chosen, by Supernotify from a notification level action | |
 | `silent` | Not read | Quiet update at push priority 5, which doesn't use the update budget but may be delayed | Yes, on progress only updates | No effect on a start |
 | `alert_once` | Sound only on the first post of a tag | Not read | Yes, on progress only updates | *Tested* |
 | `channel` | Channel, made on first use | Not read | Yes, `Appliances` | *Tested*, see Sound |
@@ -264,13 +264,14 @@ data:
     channel: Appliances              # Android
     importance: high                 # Android
     sticky: true                     # Android
-    url: /dashboard-kitchen          # iOS
-    clickAction: /dashboard-kitchen  # Android
     progress: 0                      # when progress is reported
     progress_max: 100
     chronometer: true                # when a finish time is reported
     when: 1791566212
     # critical_text: "0%"            # only with progress and no finish time
+  actions:                           # with a dashboard chosen
+    - level: notification            # sent as url to iOS and clickAction to Android
+      uri: /dashboard-kitchen
 ```
 
 Progress updates are of two kinds:
