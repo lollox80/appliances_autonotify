@@ -64,6 +64,7 @@ from .const import (
     SUPERNOTIFY_PRESENT,
     TYPE_DISCOVERY,
     TYPE_POWER,
+    TYPE_VACUUM,
 )
 from .dashboards import dashboards
 from .discovery import find_appliances, plug_switch
@@ -198,6 +199,8 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._device_id: str | None = None
         self._name: str = ""
+        # how the cycle of the appliance found is told, where it isn't by a vendor platform
+        self._type: dict[str, str] = {}
         # a power monitor found by its name, to be filled in on the form for a look before it's set up
         self._power: dict[str, Any] = {}
 
@@ -252,7 +255,8 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
         # a discovery of the same appliance may be waiting, and goes once this entry exists
         await self.async_set_unique_id(import_data[CONF_DEVICE_ID], raise_on_progress=False)
         self._abort_if_unique_id_configured()
-        return self.async_create_entry(title=import_data[CONF_NAME], data={CONF_DEVICE_ID: import_data[CONF_DEVICE_ID]})
+        data = {k: v for k, v in import_data.items() if k in (CONF_DEVICE_ID, CONF_TYPE)}
+        return self.async_create_entry(title=import_data[CONF_NAME], data=data)
 
     async def async_step_integration_discovery(self, discovery_info: dict[str, Any]) -> ConfigFlowResult:
         """An appliance found with automatic discovery off, or a power monitor named for one, so offered to be added"""
@@ -264,6 +268,7 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_power()
         self._device_id = discovery_info[CONF_DEVICE_ID]
         self._name = discovery_info[CONF_NAME]
+        self._type = {CONF_TYPE: discovery_info[CONF_TYPE]} if CONF_TYPE in discovery_info else {}
         await self.async_set_unique_id(self._device_id)
         self._abort_if_unique_id_configured()
         self.context["title_placeholders"] = {"name": self._name}
@@ -271,7 +276,7 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(title=self._name, data={CONF_DEVICE_ID: self._device_id})
+            return self.async_create_entry(title=self._name, data={CONF_DEVICE_ID: self._device_id} | self._type)
         self._set_confirm_only()
         return self.async_show_form(
             step_id="confirm",
@@ -324,9 +329,11 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 self._settings = settings
                 return await self.async_step_power()
             return self.async_create_entry(data=settings)
-        # a power monitored appliance has no progress to report
+        # a power monitored appliance has no progress to report, nor has a robot vacuum
         schema = await settings_schema(
-            self.hass, progress=self.config_entry.data.get(CONF_TYPE) != TYPE_POWER, phase=self._phase_default()
+            self.hass,
+            progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
+            phase=self._phase_default(),
         )
         shown = dict(self.config_entry.options)
         if shown.get(CONF_DASHBOARD) not in dashboards(self.hass):

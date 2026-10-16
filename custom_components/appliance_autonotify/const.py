@@ -36,6 +36,8 @@ CONF_AUTO_DISCOVER: Final[str] = "auto_discover"
 # an appliance with no integration of its own, known only by the power it draws
 TYPE_POWER: Final[str] = "power"
 CONF_POWER_ENTITY: Final[str] = "power_entity"
+# a robot vacuum, of any make, whose cleaning is a cycle
+TYPE_VACUUM: Final[str] = "vacuum"
 CONF_THRESHOLD: Final[str] = "threshold"
 CONF_GRACE_PERIOD: Final[str] = "grace_period"
 CONF_MIN_DURATION: Final[str] = "min_duration"
@@ -83,6 +85,9 @@ PREHEAT_PHASE: Final[str] = "Pre-heating"
 FAST_PREHEAT_PHASE: Final[str] = "Fast pre-heat"
 PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"
 PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
+# a robot vacuum that has stopped where it is, stuck or lifted, and won't go on by itself, by the language of Home
+# Assistant as for the buttons, English for any other
+STUCK_MESSAGES: Final[dict[str, str]] = {"en": "{name} needs help", "it": "{name} ha bisogno di aiuto"}
 # the title of a Live Activity with a timer, which iOS shows on the Lock Screen in place of the message
 LIVE_TITLE: Final[str] = "{title} · {phase}"
 # what an oven up to heat is doing, and how hot it is
@@ -93,6 +98,20 @@ SUPERNOTIFY_MISSING: Final[str] = (
     "Home Assistant app, with no Live Activity. Install Supernotify from HACS for the full experience."
 )
 
+# activities of a robot vacuum, as Home Assistant has them for every make
+VACUUM_CLEANING: Final[str] = "cleaning"
+# back where it started, or stopped by itself, the cleaning being over
+VACUUM_DONE: Final[tuple[str, ...]] = ("docked", "idle")
+VACUUM_ERROR: Final[str] = "error"
+# how long a robot vacuum stays on its dock before its cleaning is over, since one goes back mid-cleaning to wash its
+# mop, and some integrations report it docked for a while as it sets off
+VACUUM_SETTLE: Final[int] = 600
+# seconds after setting off within which being back is taken for an integration that reports a vacuum docked as it
+# leaves, as Ecovacs does each time one sets off again after washing its mop, and keeps to that while it cleans
+VACUUM_BLIP: Final[float] = 5
+VACUUM_BLIP_KIND: Final[str] = "blip"
+# how long such a report is left before the cleaning is taken to be over, with nothing else heard from the vacuum
+VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
 # translation key, per vendor platform, of the entity whose state follows the appliance cycle
 CYCLE_KEYS: Final[dict[str, str]] = {"home_connect": "operation_state"}
 PROGRESS_KEY: Final[str] = "program_progress"
