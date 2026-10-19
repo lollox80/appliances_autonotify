@@ -101,6 +101,7 @@ from .const import (
     PROGRESS_STEP,
     REMAINING_KEY,
     STAGE_KEY,
+    START_TIME_PLACEHOLDER,
     STATES_ABANDONED,
     STATES_ACTIVE,
     STATES_EVENT_ON,
@@ -125,7 +126,15 @@ from .const import (
 )
 from .dashboards import dashboard_url
 from .supernotify_api import deliveries_by_transport, supernotify_available
-from .totals import energy_entity_id, energy_price, energy_reading, format_cost, format_duration, format_energy
+from .totals import (
+    energy_entity_id,
+    energy_price,
+    energy_reading,
+    format_cost,
+    format_duration,
+    format_energy,
+    format_time,
+)
 from .words import name_type
 
 if TYPE_CHECKING:
@@ -231,6 +240,7 @@ class ApplianceWatcher:
         """What the cycle just over came to, nothing being known of one already under way as Home Assistant started"""
         totals: dict[str, str] = {}
         if self.cycle_started is not None:
+            totals[START_TIME_PLACEHOLDER] = format_time(self.cycle_started)
             # up to when it stopped, not when that was believed
             totals[DURATION_PLACEHOLDER] = format_duration((self.cycle_stopped or dt_util.utcnow()) - self.cycle_started)
             end = energy_reading(self.hass, self._energy_entity_id)
@@ -414,6 +424,10 @@ class ApplianceWatcher:
     def _text(self, key: str, default: str) -> str:
         text = str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
         values = {p: self.totals.get(p, "") for p in (DURATION_PLACEHOLDER, ENERGY_PLACEHOLDER, COST_PLACEHOLDER) if p in text}
+        if START_TIME_PLACEHOLDER in text:
+            # the cycle under way, else the last one
+            started = self.cycle_started
+            values[START_TIME_PLACEHOLDER] = format_time(started) if started else self.totals.get(START_TIME_PLACEHOLDER, "")
         if PROGRAM_PLACEHOLDER in text:
             self.last_program = self._program() or self.last_program
             values[PROGRAM_PLACEHOLDER] = self.last_program

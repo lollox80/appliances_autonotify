@@ -63,6 +63,7 @@ from .const import (
     ENERGY_PLACEHOLDER,
     NAME_PLACEHOLDER,
     PROGRAM_PLACEHOLDER,
+    START_TIME_PLACEHOLDER,
     SUPERNOTIFY_MISSING,
     SUPERNOTIFY_PRESENT,
     TYPE_DISCOVERY,
@@ -353,6 +354,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 # as it's to be typed, which a translation can't say for itself
                 "program_placeholder": PROGRAM_PLACEHOLDER,
                 "totals_placeholders": f"{DURATION_PLACEHOLDER}, {ENERGY_PLACEHOLDER}, {COST_PLACEHOLDER}",
+                "start_time_placeholder": START_TIME_PLACEHOLDER,
             },
         )
 

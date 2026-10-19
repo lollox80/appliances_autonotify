@@ -177,3 +177,21 @@ def test_durations() -> None:
     assert format_duration(timedelta(minutes=8, seconds=20)) == "8min"
     assert format_duration(timedelta(hours=2)) == "2h"
     assert format_duration(timedelta(hours=1, minutes=40)) == "1h 40min"
+
+
+async def test_start_time_as_it_starts_and_ends(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-10-19T09:29:00+00:00")
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(
+        hass,
+        grace_period=120,
+        notify_start=True,
+        start_message="🧺 Started at {start_time}",
+        end_message="Started at {start_time}, done in {duration}",
+    )
+    await wash(hass, freezer, 0.5)
+    assert calls[0].data["message"] == "🧺 Started at 11:29"
+    assert calls[-1].data["message"] == "Started at 11:29, done in 50min"

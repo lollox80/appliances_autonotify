@@ -78,7 +78,7 @@
                 "sections": {
                     "start": {
                         "name": "Messaggio di inizio",
-                        "description": "Inviato quando l'elettrodomestico parte. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma in corso.",
+                        "description": "Inviato quando l'elettrodomestico parte. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma in corso. {start_time_placeholder} diventa l'ora di avvio, per esempio 11:29.",
                         "data": {
                             "start_title": "Titolo",
                             "start_message": "Messaggio"
