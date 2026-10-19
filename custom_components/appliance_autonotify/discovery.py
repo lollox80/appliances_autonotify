@@ -60,6 +60,14 @@ def vendor_key(entity: er.RegistryEntry) -> str:
     return next((k for prefix, k in VENDOR_KEY_PREFIXES.get(entity.platform, {}).items() if key.startswith(prefix)), key)
 
 
+def device_with(device_registry: dr.DeviceRegistry, identifier: tuple[str, str]) -> dr.DeviceEntry | None:
+    """The device with the identifier, of whichever config entry, by the lookup of the Home Assistant release"""
+    if hasattr(device_registry, "async_get_devices"):
+        # from Home Assistant 2026.10, when identifiers stopped being unique across config entries
+        return next(iter(device_registry.async_get_devices(identifiers={identifier})), None)
+    return device_registry.async_get_device(identifiers={identifier})
+
+
 def companion_ids(identifiers: set[tuple[str, str]], platform: str) -> set[tuple[str, str]]:
     """The identifiers another platform would have for the same appliance, by the same id within its own platform"""
     return {(platform, value) for _, value in identifiers}
@@ -73,7 +81,7 @@ def preferred_device(hass: HomeAssistant, identifiers: set[tuple[str, str]]) -> 
         if (preferred := PREFERRED_PLATFORMS.get(domain)) is None:
             continue
         for identifier in companion_ids(identifiers, preferred):
-            if (other := device_registry.async_get_device(identifiers={identifier})) is not None:
+            if (other := device_with(device_registry, identifier)) is not None:
                 return other
     return None
 
@@ -87,7 +95,7 @@ def fallback_device(hass: HomeAssistant, identifiers: set[tuple[str, str]]) -> d
             if preferred != domain:
                 continue
             for identifier in companion_ids(identifiers, other_platform):
-                if (other := device_registry.async_get_device(identifiers={identifier})) is not None:
+                if (other := device_with(device_registry, identifier)) is not None:
                     return other
     return None
 
