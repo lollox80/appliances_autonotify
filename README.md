@@ -63,6 +63,9 @@ same cleaning. Paused, or on its way back, it's still the same cleaning too. One
 while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
 report a past error again for a while as they reconnect, with the vacuum carrying on.
 
+While it cleans, the Live Activity says what it's doing, cleaning, paused or on its way back, with buttons to match
+where the vacuum has them: *Pause* and *Return to Dock* while it cleans, *Resume* and *Return to Dock* while paused.
+
 ### Samsung Appliances
 
 A Samsung washer, dryer or dishwasher set up with the SmartThings integration is found and set up like a Home Connect

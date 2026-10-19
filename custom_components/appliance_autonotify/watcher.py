@@ -8,8 +8,10 @@ from datetime import timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.vacuum import VacuumEntityFeature
 from homeassistant.const import (
     ATTR_ENTITY_ID,
+    ATTR_SUPPORTED_FEATURES,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_DEVICE_ID,
     STATE_ON,
@@ -29,7 +31,10 @@ from homeassistant.util.unit_conversion import DurationConverter, PowerConverter
 
 from .const import (
     ACTION_FINISHED,
+    ACTION_PAUSE,
     ACTION_REMIND,
+    ACTION_RESUME,
+    ACTION_RETURN,
     ACTION_SWITCH_OFF,
     ACTION_TITLES,
     ANDROID_CHANNEL,
@@ -123,7 +128,10 @@ from .const import (
     VACUUM_CLEANING,
     VACUUM_DONE,
     VACUUM_ERROR,
+    VACUUM_PAUSED,
+    VACUUM_RETURNING,
     VACUUM_SETTLE,
+    VACUUM_SHOWN,
 )
 from .dashboards import dashboard_url
 from .discovery import fallback_device, vendor_key
@@ -332,7 +340,7 @@ class ApplianceWatcher:
                 context,
                 resend=resend,
                 extra_data=self._live_data(),
-                actions=self._tap_actions(),
+                actions=self._live_actions() + self._tap_actions(),
                 spoken_message=spoken_message,
             )
         else:
@@ -349,8 +357,8 @@ class ApplianceWatcher:
                 context,
                 mobile_only=True,
                 extra_data=data | {"silent": True, "alert_once": True},
-                # iOS forgets where a tap goes unless told again on every update
-                actions=self._tap_actions(),
+                # iOS forgets where a tap goes unless told again on every update, and Android its buttons
+                actions=self._live_actions() + self._tap_actions(),
             )
 
     async def _ended(self, finished: bool, context: Context) -> None:
@@ -394,9 +402,7 @@ class ApplianceWatcher:
         )
 
     def _end_actions(self) -> list[dict[str, str]]:
-        titles = ACTION_TITLES.get(self.hass.config.language.split("-")[0], ACTION_TITLES["en"])
-        buttons = [ACTION_FINISHED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self._switchable() else [])
-        return [{"action": f"{button}{self.entry.entry_id}", "title": titles[button]} for button in buttons]
+        return self._buttons([ACTION_FINISHED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self._switchable() else []))
 
     def _switchable(self) -> bool:
         """Whether there's a smart plug to switch off, one chosen and since removed not being offered"""
@@ -536,6 +542,14 @@ class ApplianceWatcher:
         if entity is None:
             return state.state
         return async_translate_state(self.hass, state.state, state.domain, entity.platform, entity.translation_key, None)
+
+    def _live_actions(self) -> list[dict[str, str]]:
+        """Buttons on the Live Activity, for what can be done with the appliance while it runs"""
+        return []
+
+    def _buttons(self, buttons: list[str]) -> list[dict[str, str]]:
+        titles = ACTION_TITLES.get(self.hass.config.language.split("-")[0], ACTION_TITLES["en"])
+        return [{"action": f"{button}{self.entry.entry_id}", "title": titles[button]} for button in buttons]
 
     def _tap_actions(self) -> list[dict[str, str]]:
         """Where a tap on the notification goes, if a dashboard has been chosen, as a notification level action
@@ -1083,6 +1097,8 @@ class VacuumWatcher(ApplianceWatcher):
         self._cancel_end: CALLBACK_TYPE | None = None
         # what it's waiting to see last, back on its dock or stuck
         self._pending: str | tuple[str, ...] | None = None
+        # what the Live Activity last said it was doing, cleaning, paused or on its way back
+        self._shown_activity: str | None = None
 
     @callback
     def async_start(self) -> None:
@@ -1123,6 +1139,7 @@ class VacuumWatcher(ApplianceWatcher):
         if not self.running:
             if state == VACUUM_CLEANING:
                 self.running = True
+                self._shown_activity = state
                 await self._started(event.context)
             return
         if state in VACUUM_DONE:
@@ -1147,6 +1164,43 @@ class VacuumWatcher(ApplianceWatcher):
         else:
             # cleaning, paused or on its way back is the same cleaning
             self._keep_running()
+            if state in VACUUM_SHOWN and state != self._shown_activity:
+                # what it's doing, with the buttons that go with it
+                self._shown_activity = state
+                await self._live_refresh(event.context)
+
+    def _phase(self) -> str | None:
+        state = self.hass.states.get(self.cycle_entity_id) if self.cycle_entity_id else None
+        return self._translated(state) if state is not None and state.state in VACUUM_SHOWN else None
+
+    def _live_actions(self) -> list[dict[str, str]]:
+        state = self.hass.states.get(self.cycle_entity_id) if self.cycle_entity_id else None
+        if state is None or not self.running:
+            return []
+        features = int(state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0)
+        buttons: list[str] = []
+        if state.state == VACUUM_PAUSED:
+            if features & VacuumEntityFeature.START:
+                buttons.append(ACTION_RESUME)
+        elif state.state != VACUUM_RETURNING and features & VacuumEntityFeature.PAUSE:
+            buttons.append(ACTION_PAUSE)
+        if state.state != VACUUM_RETURNING and features & VacuumEntityFeature.RETURN_HOME:
+            buttons.append(ACTION_RETURN)
+        return self._buttons(buttons)
+
+    async def _action_pressed(self, event: Event) -> None:
+        services = {ACTION_PAUSE: "pause", ACTION_RESUME: "start", ACTION_RETURN: "return_to_base"}
+        action = str(event.data.get("action") or "")
+        service = next((s for button, s in services.items() if action == f"{button}{self.entry.entry_id}"), None)
+        if service is None:
+            await super()._action_pressed(event)
+            return
+        try:
+            await self.hass.services.async_call(
+                TYPE_VACUUM, service, {ATTR_ENTITY_ID: self.cycle_entity_id}, blocking=True, context=event.context
+            )
+        except HomeAssistantError:
+            _LOGGER.exception("APPLIANCES %s of %s failed", service, self.name)
 
     @callback
     def _wait(
