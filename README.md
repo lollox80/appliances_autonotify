@@ -65,6 +65,9 @@ Paused, or on its way back, it's still the same cleaning too, and paused once
 back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
 report a past error again for a while as they reconnect, with the vacuum carrying on.
 
+While it cleans, the Live Activity says what it's doing, cleaning, paused or on its way back, with buttons to match
+where the vacuum has them: *Pause* and *Return to Dock* while it cleans, *Resume* and *Return to Dock* while paused.
+
 ### Power Monitored Appliances
 
 An appliance with no supported integration can be added if a sensor measures the power it draws.
