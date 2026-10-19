@@ -50,6 +50,7 @@ from .const import (
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
+    COST_PLACEHOLDER,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_MIN_DURATION,
@@ -59,6 +60,8 @@ from .const import (
     DEFAULT_TITLE,
     DISCOVERY_TITLE,
     DOMAIN,
+    DURATION_PLACEHOLDER,
+    ENERGY_PLACEHOLDER,
     LIVE_DETAIL_TIME,
     LIVE_DETAILS,
     LIVE_TITLE_NAME_PROGRAM,
@@ -364,6 +367,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 "supernotify": supernotify_status(self.hass),
                 # as it's to be typed, which a translation can't say for itself
                 "program_placeholder": PROGRAM_PLACEHOLDER,
+                "totals_placeholders": f"{DURATION_PLACEHOLDER}, {ENERGY_PLACEHOLDER}, {COST_PLACEHOLDER}",
             },
         )
 
