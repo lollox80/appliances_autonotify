@@ -10,10 +10,11 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import ATTR_DEVICE_CLASS, ATTR_UNIT_OF_MEASUREMENT, STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfEnergy
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
 if TYPE_CHECKING:
-    from datetime import timedelta
+    from datetime import datetime, timedelta
 
     from homeassistant.core import HomeAssistant
 
@@ -36,6 +37,11 @@ def format_duration(duration: timedelta) -> str:
 def _cents(value: float) -> Decimal:
     """Rounded to two places as a person would, half a cent up, not to the nearest float"""
     return Decimal(str(round(value, 6))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def format_time(when: datetime) -> str:
+    """The time of day, in Home Assistant's time zone, such as 11:29"""
+    return dt_util.as_local(when).strftime("%H:%M")
 
 
 def format_energy(kwh: float) -> str:
