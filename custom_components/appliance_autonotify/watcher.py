@@ -76,6 +76,7 @@ from .const import (
     FAST_PREHEAT_PHASE,
     FINISH_DRIFT,
     FINISH_TIME_KEY,
+    KEY_TYPE_PREFIXES,
     LIVE_SETTLE,
     LIVE_TITLE,
     MOBILE_ACTION_EVENT,
@@ -101,6 +102,7 @@ from .const import (
     PROGRESS_STEP,
     REMAINING_KEY,
     STAGE_KEY,
+    STAGES_FINISHED,
     START_TIME_PLACEHOLDER,
     STATES_ABANDONED,
     STATES_ACTIVE,
@@ -677,9 +679,11 @@ class HomeConnectWatcher(ApplianceWatcher):
             self.name = device.name_by_user or device.name or self.name
         programs: list[str] = []
         platform = ""
+        translation_keys: list[str] = []
         for entity in er.async_entries_for_device(er.async_get(self.hass), device_id):
             if entity.platform not in CYCLE_KEYS or entity.translation_key is None:
                 continue
+            translation_keys.append(entity.translation_key)
             # as Home Connect names it, where the platform names it otherwise
             key = VENDOR_KEYS.get(entity.platform, {}).get(entity.translation_key, entity.translation_key)
             if key == CYCLE_KEYS[entity.platform]:
@@ -692,8 +696,14 @@ class HomeConnectWatcher(ApplianceWatcher):
         if self.cycle_entity_id is None:
             raise ConfigEntryNotReady(f"No cycle state entity found for {self.name}")
         # the type of appliance isn't kept anywhere to be read, but its programs are named for it
-        appliance_type = PLATFORM_TYPES.get(platform) or next(
-            (kind for prefix, kind in APPLIANCE_TYPES.items() if any(p.startswith(prefix) for p in programs)), None
+        appliance_type = (
+            PLATFORM_TYPES.get(platform)
+            or next((kind for prefix, kind in APPLIANCE_TYPES.items() if any(p.startswith(prefix) for p in programs)), None)
+            # or, for a platform with several types, the names of its entities
+            or next(
+                (kind for prefix, kind in KEY_TYPE_PREFIXES.items() if any(k.startswith(prefix) for k in translation_keys)),
+                None,
+            )
         )
         self.icon = TYPE_ICONS.get(appliance_type or "", self._name_icon())
         # the one phase there is to know of is an oven warming up, Home Connect reporting none for anything else
@@ -773,7 +783,13 @@ class HomeConnectWatcher(ApplianceWatcher):
         return None if STAGE_KEY in self.entity_ids else super()._title_phase()
 
     async def _stage_changed(self, event: Event[EventStateChangedData]) -> None:
-        """A 3D printer moving on, from heating its bed to levelling it to printing, with no progress to show it"""
+        """A 3D printer moving on, from heating its bed to levelling it to printing, with no progress to show it, or
+        a dryer from drying to cooling"""
+        new_state = event.data["new_state"]
+        if self.running and new_state is not None and new_state.state in STAGES_FINISHED:
+            # done, though the appliance may carry on as it is a while, a dryer tumbling its load so it won't crease
+            await self._cycle_over(True, event.context)
+            return
         await self._live_refresh(event.context)
 
     async def _finish_changed(self, event: Event[EventStateChangedData]) -> None:
@@ -871,6 +887,10 @@ class HomeConnectWatcher(ApplianceWatcher):
             return
         state: str = new_state.state
         _LOGGER.debug("APPLIANCES %s cycle state %s, running: %s", self.name, state, self.running)
+        old_state = event.data["old_state"]
+        if old_state is not None and old_state.state == state:
+            # only its attributes changed, and a cycle over by what it's doing may still be `run` till it stops
+            return
         if state in STATES_RUN:
             # back on within moments of going off, so the same cycle
             self._keep_running()

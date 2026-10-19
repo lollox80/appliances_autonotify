@@ -3,6 +3,7 @@
     "name": "Appliance Auto Notify",
     "after_dependencies": [
         "home_connect",
+        "smartthings",
         "supernotify"
     ],
     "codeowners": [

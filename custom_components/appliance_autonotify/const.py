@@ -119,7 +119,11 @@ VACUUM_BLIP_KIND: Final[str] = "blip"
 # how long such a report is left before the cleaning is taken to be over, with nothing else heard from the vacuum
 VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
 # translation key, per vendor platform, of the entity whose state follows the appliance cycle
-CYCLE_KEYS: Final[dict[str, str]] = {"home_connect": "operation_state", "bambu_lab": "print_status"}
+CYCLE_KEYS: Final[dict[str, str]] = {
+    "home_connect": "operation_state",
+    "bambu_lab": "print_status",
+    "smartthings": "operation_state",
+}
 PROGRESS_KEY: Final[str] = "program_progress"
 # the time left, which where an appliance reports it is fresher than its finish time, and is how that's worked out
 REMAINING_KEY: Final[str] = "remaining_time"
@@ -152,7 +156,17 @@ ENTITY_DOMAINS: Final[dict[str, str]] = {
 # translation keys of a vendor platform for the entities named otherwise by Home Connect
 VENDOR_KEYS: Final[dict[str, dict[str, str]]] = {
     "bambu_lab": {"print_progress": PROGRESS_KEY, "end_time": FINISH_TIME_KEY},
+    # Samsung washers, dryers and dishwashers, through Samsung's cloud
+    "smartthings": {
+        **{f"{kind}_machine_state": "operation_state" for kind in ("washer", "dryer", "dishwasher")},
+        **{f"{kind}_job_state": STAGE_KEY for kind in ("washer", "dryer", "dishwasher")},
+        "completion_time": FINISH_TIME_KEY,
+    },
 }
+# the type of appliance, from the beginning of the translation key of any of its entities, where a platform has
+# several types and names its entities for them
+KEY_TYPE_PREFIXES: Final[dict[str, str]] = {"dishwasher_": "dishwasher", "washer_": "washer", "dryer_": "dryer"}
+
 # the type of appliance of a platform that has only the one
 PLATFORM_TYPES: Final[dict[str, str]] = {"bambu_lab": "3d_printer"}
 # degrees between Live Activity updates of an oven up to heat, whose temperature never stops wandering
@@ -167,7 +181,9 @@ STATES_RUN: Final[tuple[str, ...]] = ("run", "prepare", "running")
 # a cycle already under way, so not a new start when `run` follows
 STATES_ACTIVE: Final[tuple[str, ...]] = (*STATES_RUN, "pause", "actionrequired")
 # the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`
-STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "finish")
+STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "finish", "stop")
+# what an appliance is doing that means its cycle is over, a dryer only tumbling now and then so its load doesn't crease
+STAGES_FINISHED: Final[tuple[str, ...]] = ("finish", "finished", "wrinkle_prevent")
 # over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed,
 # and a 3D printer `idle` with no word of how its print ended
 STATES_SETTLING: Final[tuple[str, ...]] = ("ready", "idle")

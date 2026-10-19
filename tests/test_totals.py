@@ -10,7 +10,14 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.appliance_autonotify.const import VACUUM_SETTLE
-from custom_components.appliance_autonotify.totals import format_duration, speak_cost, speak_duration, speak_energy, spoken
+from custom_components.appliance_autonotify.totals import (
+    energy_entity_id,
+    format_duration,
+    speak_cost,
+    speak_duration,
+    speak_energy,
+    spoken,
+)
 
 from .conftest import mock_supernotify
 from .test_vacuum import add_vacuum, advance, setup_vacuum
@@ -246,3 +253,18 @@ async def test_said_aloud(hass: HomeAssistant) -> None:
     hass.config.currency = "USD"
     assert speak_cost(hass, 1.5) == "1,50 $"
     assert spoken("📌 Done\n⏱️ 50 min\n\n· ok |") == "Done. 50 min. ok."
+
+
+async def test_energy_meter_rather_than_what_was_used_since_the_last_reading(hass: HomeAssistant) -> None:
+    source = MockConfigEntry(domain="smartthings")
+    source.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=source.entry_id, identifiers={("smartthings", "x")})
+    registry = er.async_get(hass)
+    for key, state_class in (("delta", "measurement"), ("energy", "total_increasing"), ("saved", None)):
+        entity = registry.async_get_or_create(
+            "sensor", "smartthings", key, suggested_object_id=f"dryer_{key}", device_id=device.id, config_entry=source
+        )
+        attributes = {"device_class": "energy", "unit_of_measurement": "kWh"}
+        hass.states.async_set(entity.entity_id, "1", attributes | ({"state_class": state_class} if state_class else {}))
+    assert energy_entity_id(hass, device.id) == "sensor.dryer_energy"
+    assert energy_entity_id(hass, None) is None

@@ -21,6 +21,7 @@ from .const import (
     DOMAIN,
     TYPE_DISCOVERY,
     TYPE_VACUUM,
+    VENDOR_KEYS,
 )
 from .words import name_type
 
@@ -49,6 +50,12 @@ class PowerMonitor:
     name: str
 
 
+def vendor_key(entity: er.RegistryEntry) -> str:
+    """The translation key of an entity, as Home Connect has it where its platform names it otherwise"""
+    key = entity.translation_key or ""
+    return VENDOR_KEYS.get(entity.platform, {}).get(key, key)
+
+
 @callback
 def find_appliances(hass: HomeAssistant) -> list[Appliance]:
     """Devices of the known platforms that have a cycle state entity, and robot vacuums of any make"""
@@ -60,7 +67,7 @@ def find_appliances(hass: HomeAssistant) -> list[Appliance]:
             continue
         if entity.domain == TYPE_VACUUM:
             kind: str | None = TYPE_VACUUM
-        elif entity.translation_key is not None and CYCLE_KEYS.get(entity.platform) == entity.translation_key:
+        elif entity.translation_key is not None and CYCLE_KEYS.get(entity.platform) == vendor_key(entity):
             kind = None
         else:
             continue

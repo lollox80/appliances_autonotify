@@ -21,7 +21,7 @@ in English only. Any other appliance can be added by hand if it has a power moni
 ## What You Need
 
 - Home Assistant 2026.7 or later
-- An appliance set up with the Home Connect integration, a robot vacuum of any make, a Bambu Lab 3D printer set up
+- An appliance set up with the Home Connect or SmartThings integration, a robot vacuum of any make, a Bambu Lab 3D printer set up
   with [ha-bambulab](https://github.com/greghesp/ha-bambulab), or an appliance with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification. 
@@ -62,6 +62,13 @@ dock, or stopped by itself, for 10 minutes, so a vacuum that goes back to wash i
 same cleaning. Paused, or on its way back, it's still the same cleaning too. One that stays in error for 10 minutes
 while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
 report a past error again for a while as they reconnect, with the vacuum carrying on.
+
+### Samsung Appliances
+
+A Samsung washer, dryer or dishwasher set up with the SmartThings integration is found and set up like a Home Connect
+appliance. The Live Activity tells what it's doing, such as drying or cooling, and counts down to the time it says it
+will be done. A dryer that goes on tumbling now and then so its load won't crease is finished as that starts, rather
+than when it stops.
 
 ### 3D Printers
 
