@@ -123,6 +123,7 @@ CYCLE_KEYS: Final[dict[str, str]] = {
     "home_connect": "operation_state",
     "bambu_lab": "print_status",
     "smartthings": "operation_state",
+    "localthings": "machine_state",
 }
 PROGRESS_KEY: Final[str] = "program_progress"
 # the time left, which where an appliance reports it is fresher than its finish time, and is how that's worked out
@@ -162,7 +163,15 @@ VENDOR_KEYS: Final[dict[str, dict[str, str]]] = {
         **{f"{kind}_job_state": STAGE_KEY for kind in ("washer", "dryer", "dishwasher")},
         "completion_time": FINISH_TIME_KEY,
     },
+    # the same, on the local network
+    "localthings": {"progress_percentage": PROGRESS_KEY, "finish_time": FINISH_TIME_KEY, "progress": STAGE_KEY},
 }
+# beginnings of translation keys of a vendor platform for an entity named otherwise by Home Connect, one per model
+VENDOR_KEY_PREFIXES: Final[dict[str, dict[str, str]]] = {
+    "localthings": {"dryer_cycle_table": "selected_program", "washer_cycle_table": "selected_program"},
+}
+# for an appliance that two platforms report, the one preferred by the other, the local network over the cloud
+PREFERRED_PLATFORMS: Final[dict[str, str]] = {"smartthings": "localthings"}
 # the type of appliance, from the beginning of the translation key of any of its entities, where a platform has
 # several types and names its entities for them
 KEY_TYPE_PREFIXES: Final[dict[str, str]] = {"dishwasher_": "dishwasher", "washer_": "washer", "dryer_": "dryer"}
@@ -177,7 +186,7 @@ PREHEAT_SETTLE: Final[float] = 3
 STATES_EVENT_ON: Final[tuple[str, ...]] = ("present", "confirmed", "on")
 
 # the cycle has started, a 3D printer first heating up and levelling its bed as it gets ready to print
-STATES_RUN: Final[tuple[str, ...]] = ("run", "prepare", "running")
+STATES_RUN: Final[tuple[str, ...]] = ("run", "prepare", "running", "active")
 # a cycle already under way, so not a new start when `run` follows
 STATES_ACTIVE: Final[tuple[str, ...]] = (*STATES_RUN, "pause", "actionrequired")
 # the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`

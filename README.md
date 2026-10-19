@@ -70,6 +70,10 @@ appliance. The Live Activity tells what it's doing, such as drying or cooling, a
 will be done. A dryer that goes on tumbling now and then so its load won't crease is finished as that starts, rather
 than when it stops.
 
+One also set up with [LocalThings](https://github.com/mbillow/localthings), which reaches it on the local network,
+is set up through that instead, as the same appliance, with SmartThings told of only while LocalThings can't be
+heard from. LocalThings also reports how far along the cycle is, for the bar, and the program, for `{program}`.
+
 ### 3D Printers
 
 A Bambu Lab printer set up with [ha-bambulab](https://github.com/greghesp/ha-bambulab) is found and set up like a

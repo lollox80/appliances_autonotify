@@ -124,9 +124,9 @@ from .const import (
     VACUUM_DONE,
     VACUUM_ERROR,
     VACUUM_SETTLE,
-    VENDOR_KEYS,
 )
 from .dashboards import dashboard_url
+from .discovery import fallback_device, vendor_key
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .totals import (
     CycleTotals,
@@ -172,6 +172,9 @@ class ApplianceWatcher:
         self.cycle_entity_id: str | None = None
         # by translation key, whichever of those made use of the appliance has
         self.entity_ids: dict[str, str] = {}
+        # the same, through a second platform for the same appliance, for while the first can't be heard from
+        self.fallback_cycle_entity_id: str | None = None
+        self.fallback_ids: dict[str, str] = {}
         self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
@@ -480,10 +483,20 @@ class ApplianceWatcher:
         return "\n".join(" ".join(line.split()) for line in text.strip().split("\n"))
 
     def _state(self, key: str) -> State | None:
-        """The state of one of the appliance's entities, where it has the entity and its state is known"""
-        entity_id = self.entity_ids.get(key)
+        """The state of one of the appliance's entities, where it has the entity and its state is known, from the
+        second platform for the appliance while the first doesn't know it"""
+        for ids in (self.entity_ids, self.fallback_ids):
+            if (state := self._known(ids.get(key))) is not None:
+                return state
+        return None
+
+    def _known(self, entity_id: str | None) -> State | None:
         state = self.hass.states.get(entity_id) if entity_id else None
         return None if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE) else state
+
+    def _cycle_state(self) -> State | None:
+        """The state of the cycle, from the second platform for the appliance while the first doesn't know it"""
+        return self._known(self.cycle_entity_id) or self._known(self.fallback_cycle_entity_id)
 
     def _number(self, key: str) -> float | None:
         state = self._state(key)
@@ -685,7 +698,7 @@ class HomeConnectWatcher(ApplianceWatcher):
                 continue
             translation_keys.append(entity.translation_key)
             # as Home Connect names it, where the platform names it otherwise
-            key = VENDOR_KEYS.get(entity.platform, {}).get(entity.translation_key, entity.translation_key)
+            key = vendor_key(entity)
             if key == CYCLE_KEYS[entity.platform]:
                 self.cycle_entity_id = entity.entity_id
                 platform = entity.platform
@@ -693,6 +706,17 @@ class HomeConnectWatcher(ApplianceWatcher):
                 self.entity_ids[key] = entity.entity_id
                 if key in PROGRAM_KEYS:
                     programs.extend((entity.capabilities or {}).get("options") or [])
+        # the same appliance through another platform, for whatever this one can't tell while it's away
+        companion = fallback_device(self.hass, device.identifiers) if device is not None else None
+        if companion is not None:
+            for entity in er.async_entries_for_device(er.async_get(self.hass), companion.id):
+                if entity.platform not in CYCLE_KEYS or entity.translation_key is None or entity.disabled:
+                    continue
+                key = vendor_key(entity)
+                if key == CYCLE_KEYS[entity.platform]:
+                    self.fallback_cycle_entity_id = entity.entity_id
+                elif ENTITY_DOMAINS.get(key) == entity.domain:
+                    self.fallback_ids[key] = entity.entity_id
         if self.cycle_entity_id is None:
             raise ConfigEntryNotReady(f"No cycle state entity found for {self.name}")
         # the type of appliance isn't kept anywhere to be read, but its programs are named for it
@@ -712,12 +736,13 @@ class HomeConnectWatcher(ApplianceWatcher):
             self.notify_phase = self.entry.options.get(CONF_NOTIFY_PHASE, self.phase_default)
 
         # a cycle under way at startup still has its Live Activity closed when it ends
-        state = self.hass.states.get(self.cycle_entity_id)
+        state = self._cycle_state()
         self.running = state is not None and state.state in STATES_ACTIVE
         # and with no knowing whether its oven has been up to heat, it isn't taken to be warming up
         self.preheated = self.running
 
-        self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._cycle_changed))
+        cycle_entity_ids = [e for e in (self.cycle_entity_id, self.fallback_cycle_entity_id) if e]
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, cycle_entity_ids, self._cycle_changed))
         self.entry.async_on_unload(self._keep_running)
         self.entry.async_on_unload(self._forget_preheated)
         for keys, listener in (
@@ -727,7 +752,7 @@ class HomeConnectWatcher(ApplianceWatcher):
             ((CAVITY_TEMPERATURE_KEY, TARGET_TEMPERATURE_KEY), self._temperature_changed),
             (PREHEAT_FINISHED_KEYS, self._preheat_finished),
         ):
-            if entity_ids := [self.entity_ids[key] for key in keys if key in self.entity_ids]:
+            if entity_ids := [ids[key] for ids in (self.entity_ids, self.fallback_ids) for key in keys if key in ids]:
                 self.entry.async_on_unload(async_track_state_change_event(self.hass, entity_ids, listener))
 
     def _temperatures(self) -> tuple[float, float] | None:
@@ -766,11 +791,11 @@ class HomeConnectWatcher(ApplianceWatcher):
         return self._preheat_message() or super()._progress_message(progress)
 
     def _phase(self) -> str | None:
-        if self._paused() and self.cycle_entity_id and (paused := self._translated(self.hass.states.get(self.cycle_entity_id))):
+        if self._paused() and (paused := self._translated(self._cycle_state())):
             return paused
         if message := self._preheat_message():
             return message
-        if STAGE_KEY in self.entity_ids:
+        if STAGE_KEY in self.entity_ids or STAGE_KEY in self.fallback_ids:
             # a 3D printer, whose name of the print goes in the title instead
             return self._translated(self._state(STAGE_KEY)) or super()._phase()
         program, current = super()._phase(), self._number(CAVITY_TEMPERATURE_KEY)
@@ -801,7 +826,7 @@ class HomeConnectWatcher(ApplianceWatcher):
             await self._live_refresh(event.context)
 
     def _paused(self) -> bool:
-        state = self.hass.states.get(self.cycle_entity_id) if self.cycle_entity_id else None
+        state = self._cycle_state()
         return state is not None and state.state in STATES_PAUSED
 
     async def _temperature_changed(self, event: Event[EventStateChangedData]) -> None:
@@ -884,6 +909,9 @@ class HomeConnectWatcher(ApplianceWatcher):
     async def _cycle_changed(self, event: Event[EventStateChangedData]) -> None:
         new_state = event.data["new_state"]
         if new_state is None:
+            return
+        if new_state.entity_id != self.cycle_entity_id and self._known(self.cycle_entity_id):
+            # the platform preferred is there to be heard from, so the other is no more than a lagging echo of it
             return
         state: str = new_state.state
         _LOGGER.debug("APPLIANCES %s cycle state %s, running: %s", self.name, state, self.running)

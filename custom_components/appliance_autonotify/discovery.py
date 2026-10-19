@@ -19,8 +19,10 @@ from .const import (
     CYCLE_TYPES,
     DERIVED_POWER_PLATFORMS,
     DOMAIN,
+    PREFERRED_PLATFORMS,
     TYPE_DISCOVERY,
     TYPE_VACUUM,
+    VENDOR_KEY_PREFIXES,
     VENDOR_KEYS,
 )
 from .words import name_type
@@ -53,7 +55,41 @@ class PowerMonitor:
 def vendor_key(entity: er.RegistryEntry) -> str:
     """The translation key of an entity, as Home Connect has it where its platform names it otherwise"""
     key = entity.translation_key or ""
-    return VENDOR_KEYS.get(entity.platform, {}).get(key, key)
+    if key in (keys := VENDOR_KEYS.get(entity.platform, {})):
+        return keys[key]
+    return next((k for prefix, k in VENDOR_KEY_PREFIXES.get(entity.platform, {}).items() if key.startswith(prefix)), key)
+
+
+def companion_ids(identifiers: set[tuple[str, str]], platform: str) -> set[tuple[str, str]]:
+    """The identifiers another platform would have for the same appliance, by the same id within its own platform"""
+    return {(platform, value) for _, value in identifiers}
+
+
+@callback
+def preferred_device(hass: HomeAssistant, identifiers: set[tuple[str, str]]) -> dr.DeviceEntry | None:
+    """The device of the platform preferred to that of the identifiers for the same appliance, where there is one"""
+    device_registry = dr.async_get(hass)
+    for domain, _ in identifiers:
+        if (preferred := PREFERRED_PLATFORMS.get(domain)) is None:
+            continue
+        for identifier in companion_ids(identifiers, preferred):
+            if (other := device_registry.async_get_device(identifiers={identifier})) is not None:
+                return other
+    return None
+
+
+@callback
+def fallback_device(hass: HomeAssistant, identifiers: set[tuple[str, str]]) -> dr.DeviceEntry | None:
+    """The device of a platform that of the identifiers is preferred to, for the same appliance, where there is one"""
+    device_registry = dr.async_get(hass)
+    for domain, _ in identifiers:
+        for other_platform, preferred in PREFERRED_PLATFORMS.items():
+            if preferred != domain:
+                continue
+            for identifier in companion_ids(identifiers, other_platform):
+                if (other := device_registry.async_get_device(identifiers={identifier})) is not None:
+                    return other
+    return None
 
 
 @callback
@@ -72,6 +108,9 @@ def find_appliances(hass: HomeAssistant) -> list[Appliance]:
         else:
             continue
         device = device_registry.async_get(entity.device_id)
+        if device is not None and kind is None and preferred_device(hass, device.identifiers) is not None:
+            # the same appliance through a platform preferred to this one, so set up through that instead
+            continue
         if device is not None:
             found[device.id] = Appliance(device.id, device.name_by_user or device.name or entity.entity_id, kind)
     return list(found.values())
