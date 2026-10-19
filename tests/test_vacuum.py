@@ -10,7 +10,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
-from custom_components.appliance_autonotify.const import DOMAIN, VACUUM_BLIP_SETTLE, VACUUM_SETTLE
+from custom_components.appliance_autonotify.const import DOMAIN, VACUUM_BLIP_SETTLE, VACUUM_MIDWAY_SETTLE, VACUUM_SETTLE
 
 from .conftest import mock_supernotify
 from .test_watcher import ANDROID, ended, pass_time, set_state
@@ -179,6 +179,7 @@ async def test_vacuum_back_to_wash_its_mop_is_the_same_cleaning(hass: HomeAssist
     await advance(hass, freezer, VACUUM_SETTLE)
     assert len(told(calls)) == 1
 
+    await set_state(hass, vacuum, "returning")
     await set_state(hass, vacuum, "docked")
     await advance(hass, freezer, VACUUM_SETTLE)
     assert len(told(calls)) == 3
@@ -218,6 +219,126 @@ async def test_vacuum_docked_as_it_sets_off_is_the_same_cleaning(hass: HomeAssis
     assert len(told(calls)) == 1
     await advance(hass, freezer, 1)
     assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+
+
+async def test_vacuum_long_on_its_dock_part_way_through(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """A real Ecovacs cleaning, back on its dock straight from cleaning for twelve minutes part way through, as it was
+    from 10:59:32 to 11:11:47, which is the same cleaning, not one ending and another starting"""
+    freezer.move_to("2026-10-17T08:21:00+00:00")
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id, notify_start=True)
+
+    # seconds from one activity to the next, as reported from 10:21:32 to 11:26:08
+    for state, seconds in (
+        ("cleaning", 1115),
+        ("docked", 111),  # back for its mop
+        ("cleaning", 1054),
+        ("docked", 735),  # on its dock for over ten minutes
+        ("cleaning", 819),
+        ("returning", 42),
+    ):
+        await set_state(hass, vacuum, state)
+        await advance(hass, freezer, seconds)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started"]
+
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+
+
+async def test_vacuum_straight_back_from_cleaning_for_good(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """One that never says it's on its way back is over once it has stayed on its dock long enough not to set off again"""
+    device_id, vacuum = add_vacuum(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1200)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    # a second docked, or idle, doesn't make it any sooner
+    await set_state(hass, vacuum, "idle")
+    await advance(hass, freezer, VACUUM_MIDWAY_SETTLE - VACUUM_SETTLE - 1)
+    assert len(told(calls)) == 1
+    await advance(hass, freezer, 1)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+
+
+async def test_vacuum_paused_on_its_dock_once_back(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """A real Ecovacs, said to be paused two minutes after it was back on its dock, as it was at 22:53:39, then away
+    with the vendor cloud for the night, which is still the end of its cleaning"""
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1200)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 36)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 116)
+    await set_state(hass, vacuum, "paused")
+    await advance(hass, freezer, 60)
+    await set_state(hass, vacuum, "unavailable")
+    await advance(hass, freezer, VACUUM_SETTLE - 176)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+
+    # nor is it a new cleaning when it's back from the cloud
+    for state in ("paused", "docked"):
+        await set_state(hass, vacuum, state)
+    assert len(told(calls)) == 3
+
+
+async def test_vacuum_paused_out_cleaning(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Paused while it's out, even if its integration said it was docked as it set off, is still the same cleaning"""
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 600)
+    await set_state(hass, vacuum, "paused")
+    await advance(hass, freezer, VACUUM_BLIP_SETTLE)
+    assert len(told(calls)) == 1
+
+
+async def test_vacuum_cleaning_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Home Assistant restarted part way through a cleaning, while the integration reports a past error again, as on
+    17/10 at 15:17: what it says next shows it was cleaning, so its end is still told, with no second start"""
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "error")
+    await setup_vacuum(hass, device_id, notify_start=True)
+
+    await advance(hass, freezer, 557)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 44)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno is finished", "Bruno is finished"]
+
+
+async def test_vacuum_docked_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Restarted with nothing to go by, then docked: no cleaning to tell of, and the next one starts as usual"""
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "unknown")
+    await setup_vacuum(hass, device_id, notify_start=True)
+
+    for state in ("docked", "error", "docked"):
+        await set_state(hass, vacuum, state)
+    await advance(hass, freezer, VACUUM_MIDWAY_SETTLE)
+    assert told(calls) == []
+
+    await set_state(hass, vacuum, "cleaning")
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started"]
 
 
 async def test_vacuum_docked_as_it_sets_off_and_never_heard_from_again(
@@ -268,6 +389,7 @@ async def test_vacuum_error_once_back_is_the_end(hass: HomeAssistant, freezer: F
     await setup_vacuum(hass, device_id)
 
     await advance(hass, freezer, 1200)
+    await set_state(hass, vacuum, "returning")
     await set_state(hass, vacuum, "docked")
     # an empty water tank, say, which the vacuum's own app tells of
     await set_state(hass, vacuum, "error")

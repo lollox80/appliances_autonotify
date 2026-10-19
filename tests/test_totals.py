@@ -174,6 +174,7 @@ async def test_vacuum_cleaning_is_timed_till_it_was_back(hass: HomeAssistant, fr
     await advance(hass, freezer, 120)
     await set_state(hass, vacuum, "cleaning")
     await advance(hass, freezer, 1800)
+    await set_state(hass, vacuum, "returning")
     await set_state(hass, vacuum, "docked")
     await advance(hass, freezer, VACUUM_SETTLE)
     assert calls[-1].data["message"] == "Bruno: 1 h 2 min"

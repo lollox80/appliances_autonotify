@@ -131,9 +131,12 @@ VACUUM_SHOWN: Final[tuple[str, ...]] = (VACUUM_CLEANING, VACUUM_PAUSED, VACUUM_R
 # back where it started, or stopped by itself, the cleaning being over
 VACUUM_DONE: Final[tuple[str, ...]] = ("docked", "idle")
 VACUUM_ERROR: Final[str] = "error"
-# how long a robot vacuum stays on its dock before its cleaning is over, since one goes back mid-cleaning to wash its
-# mop, and some integrations report it docked for a while as it sets off
+# how long a robot vacuum stays on its dock, having said it was on its way back, before its cleaning is over
 VACUUM_SETTLE: Final[int] = 600
+# how long one stays on its dock having gone straight there from cleaning, as one does part way through to wash its
+# mop or fill its tank, which can take over ten minutes, before its cleaning is over
+VACUUM_MIDWAY_SETTLE: Final[int] = 30 * 60
+VACUUM_MIDWAY_KIND: Final[str] = "midway"
 # seconds after setting off within which being back is taken for an integration that reports a vacuum docked as it
 # leaves, as Ecovacs does each time one sets off again after washing its mop, and keeps to that while it cleans
 VACUUM_BLIP: Final[float] = 5

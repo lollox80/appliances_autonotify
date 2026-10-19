@@ -128,6 +128,8 @@ from .const import (
     VACUUM_CLEANING,
     VACUUM_DONE,
     VACUUM_ERROR,
+    VACUUM_MIDWAY_KIND,
+    VACUUM_MIDWAY_SETTLE,
     VACUUM_PAUSED,
     VACUUM_RETURNING,
     VACUUM_SETTLE,
@@ -1099,6 +1101,8 @@ class VacuumWatcher(ApplianceWatcher):
         self._pending: str | tuple[str, ...] | None = None
         # what the Live Activity last said it was doing, cleaning, paused or on its way back
         self._shown_activity: str | None = None
+        # not yet known whether it was cleaning when Home Assistant started, until it says something telling
+        self._unsure = False
 
     @callback
     def async_start(self) -> None:
@@ -1116,6 +1120,9 @@ class VacuumWatcher(ApplianceWatcher):
         # a cleaning under way at startup still has its Live Activity closed when it ends
         state = self.hass.states.get(self.cycle_entity_id)
         self.running = state is not None and state.state not in (*VACUUM_DONE, VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
+        # with nothing to go by yet, or an error that some integrations report again on reconnecting, whatever it says
+        # next tells whether a cleaning was under way
+        self._unsure = state is None or state.state in (VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
         self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._activity_changed))
         self.entry.async_on_unload(self._keep_running)
 
@@ -1136,31 +1143,42 @@ class VacuumWatcher(ApplianceWatcher):
         if state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             # away with the vendor cloud, which changes nothing
             return
+        if self._unsure and state != VACUUM_ERROR:
+            self._unsure = False
+            if not self.running and state in VACUUM_SHOWN:
+                # cleaning since before Home Assistant started, so already told, and its end still to tell
+                self.running = True
+                self._shown_activity = state
+                return
         if not self.running:
             if state == VACUUM_CLEANING:
                 self.running = True
                 self._shown_activity = state
                 await self._started(event.context)
             return
+        old_state = event.data["old_state"]
         if state in VACUUM_DONE:
-            old_state = event.data["old_state"]
-            if (
-                old_state is not None
-                and old_state.state == VACUUM_CLEANING
-                and (new_state.last_changed - old_state.last_changed).total_seconds() < VACUUM_BLIP
-            ):
-                # back within a moment of setting off, which some integrations report as a vacuum leaves its dock
-                # and then keep to while it cleans, so only believed if nothing more is heard for a long while
-                if self._pending is None:
-                    self._wait(self._settled, VACUUM_BLIP_KIND, event.context, VACUUM_BLIP_SETTLE)
-            elif self._pending != VACUUM_DONE:
-                # over only once it has stayed back, not when it washes its mop part way through
+            if old_state is not None and old_state.state == VACUUM_CLEANING:
+                if (new_state.last_changed - old_state.last_changed).total_seconds() < VACUUM_BLIP:
+                    # back within a moment of setting off, which some integrations report as a vacuum leaves its dock
+                    # and then keep to while it cleans, so only believed if nothing more is heard for a long while
+                    if self._pending is None:
+                        self._wait(self._settled, VACUUM_BLIP_KIND, event.context, VACUUM_BLIP_SETTLE)
+                elif self._pending not in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+                    # straight back from cleaning, without saying it was on its way, as when it washes its mop or
+                    # fills its tank part way through, so given longer to set off again
+                    self._wait(self._settled, VACUUM_MIDWAY_KIND, event.context, VACUUM_MIDWAY_SETTLE)
+            elif self._pending not in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+                # over only once it has stayed back
                 self._wait(self._settled, VACUUM_DONE, event.context)
         elif state == VACUUM_ERROR:
             # stuck only if it stays so, since some integrations report a past error again on reconnecting, while
             # the vacuum carries on, and an error once back on its dock is for its own app to tell
             if self._pending is None:
                 self._wait(self._stuck_for_good, VACUUM_ERROR, event.context)
+        elif state == VACUUM_PAUSED and self._pending in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+            # paused on its dock, which some integrations report once one is back, isn't setting off again
+            return
         else:
             # cleaning, paused or on its way back is the same cleaning
             self._keep_running()
