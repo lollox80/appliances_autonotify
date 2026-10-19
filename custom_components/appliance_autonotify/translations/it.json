@@ -86,7 +86,7 @@
                     },
                     "end": {
                         "name": "Messaggio di fine",
-                        "description": "Inviato quando l'elettrodomestico finisce. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma eseguito.",
+                        "description": "Inviato quando l'elettrodomestico finisce. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma eseguito. {totals_placeholders} diventano la durata del ciclo, l'energia consumata, se ha un misuratore di energia, e quanto è costata, se nella dashboard Energia è impostato un prezzo.",
                         "data": {
                             "end_title": "Titolo",
                             "end_message": "Messaggio",

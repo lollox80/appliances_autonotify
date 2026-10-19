@@ -86,7 +86,7 @@
                     },
                     "end": {
                         "name": "End message",
-                        "description": "Sent when the appliance finishes. Clear a box to go back to the usual wording. Put {program_placeholder} where the program that ran should be named.",
+                        "description": "Sent when the appliance finishes. Clear a box to go back to the usual wording. Put {program_placeholder} where the program that ran should be named. {totals_placeholders} are replaced by how long it ran, the energy it used, where it has an energy meter, and what that cost, where a price is set on the Energy dashboard.",
                         "data": {
                             "end_title": "Title",
                             "end_message": "Message",
