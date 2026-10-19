@@ -127,6 +127,7 @@ from .const import (
 from .dashboards import dashboard_url
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .totals import (
+    CycleTotals,
     energy_entity_id,
     energy_price,
     energy_reading,
@@ -134,6 +135,10 @@ from .totals import (
     format_duration,
     format_energy,
     format_time,
+    speak_cost,
+    speak_duration,
+    speak_energy,
+    spoken,
 )
 from .words import name_type
 
@@ -198,7 +203,7 @@ class ApplianceWatcher:
         self._energy_entity_id: str | None = None
         self._energy_start: float | None = None
         # what the last cycle came to, by placeholder, for its end and its reminders
-        self.totals: dict[str, str] = {}
+        self.totals: CycleTotals = CycleTotals()
 
     @callback
     def async_start(self) -> None:
@@ -238,18 +243,18 @@ class ApplianceWatcher:
 
     async def _sum_up(self) -> None:
         """What the cycle just over came to, nothing being known of one already under way as Home Assistant started"""
-        totals: dict[str, str] = {}
-        if self.cycle_started is not None:
-            totals[START_TIME_PLACEHOLDER] = format_time(self.cycle_started)
+        totals = CycleTotals()
+        if (started := self.cycle_started) is not None:
             # up to when it stopped, not when that was believed
-            totals[DURATION_PLACEHOLDER] = format_duration((self.cycle_stopped or dt_util.utcnow()) - self.cycle_started)
+            duration = (self.cycle_stopped or dt_util.utcnow()) - started
+            used = cost = None
             end = energy_reading(self.hass, self._energy_entity_id)
             # nothing to tell if the meter was reset part way through
             if self._energy_start is not None and end is not None and end >= self._energy_start:
                 used = end - self._energy_start
-                totals[ENERGY_PLACEHOLDER] = format_energy(used)
                 if (price := await energy_price(self.hass)) is not None:
-                    totals[COST_PLACEHOLDER] = format_cost(self.hass, used * price)
+                    cost = used * price
+            totals = CycleTotals(started, duration, used, cost)
         self.totals = totals
         self._cycle_forgotten()
 
@@ -289,17 +294,25 @@ class ApplianceWatcher:
     async def _started(self, context: Context) -> None:
         self._cycle_began()
         # nothing yet to tell of this one
-        self.totals = {}
+        self.totals = CycleTotals()
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
         async with self._sending:
             # resent, since to Supernotify a second cycle soon after the first is a repeat to be dropped
-            await self._tell(self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE), self.notify_start, context, resend=True)
+            await self._tell(
+                self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE),
+                self.notify_start,
+                context,
+                resend=True,
+                spoken_message=self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE, speak=True),
+            )
             if supernotify_available(self.hass):
                 # whatever comes next waits its turn, the first progress being only moments behind the start
                 await asyncio.sleep(LIVE_SETTLE)
 
-    async def _tell(self, message: str, ordinary: bool, context: Context, resend: bool = False) -> None:
+    async def _tell(
+        self, message: str, ordinary: bool, context: Context, resend: bool = False, spoken_message: str | None = None
+    ) -> None:
         """Notify of a cycle under way, either everywhere or with no more than its Live Activity brought up to date"""
         # a Live Activity keeps the title it started with
         title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
@@ -309,7 +322,13 @@ class ApplianceWatcher:
         elif ordinary:
             # everywhere, opening or updating the Live Activity on phones as it goes
             await self._supernotify(
-                message, title, context, resend=resend, extra_data=self._live_data(), actions=self._tap_actions()
+                message,
+                title,
+                context,
+                resend=resend,
+                extra_data=self._live_data(),
+                actions=self._tap_actions(),
+                spoken_message=spoken_message,
             )
         else:
             data = self._live_data()
@@ -354,13 +373,17 @@ class ApplianceWatcher:
                 if self.reminder:
                     self._remind_in(self.reminder, context)
 
-    async def _tell_end(self, context: Context, resend: bool = False) -> None:
+    async def _tell_end(self, context: Context, resend: bool = False, reminder: bool = False) -> None:
         """The end, with buttons to say the appliance has been seen to, to be reminded later, or to switch it off"""
+        title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         await self._supernotify(
             self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
-            self._text(CONF_END_TITLE, DEFAULT_TITLE),
+            title,
             context,
             resend=resend,
+            # a reminder is for whoever is to see to it, not for the whole house to hear again
+            mobile_only=reminder,
+            spoken_message=self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE, speak=True, title=title),
             actions=self._end_actions() + self._tap_actions(),
             extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag},
         )
@@ -392,7 +415,7 @@ class ApplianceWatcher:
         self._cancel_reminder = None
         self._reminders_sent += 1
         # Supernotify would drop the same message again as a duplicate
-        await self._tell_end(_later(context), resend=True)
+        await self._tell_end(_later(context), resend=True, reminder=True)
         if self.reminder and self._reminders_sent < self.reminder_repeats:
             self._remind_in(self.reminder, context)
 
@@ -421,20 +444,36 @@ class ApplianceWatcher:
             except HomeAssistantError:
                 _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
 
-    def _text(self, key: str, default: str) -> str:
+    def _text(self, key: str, default: str, speak: bool = False, title: str | None = None) -> str:
+        """The text chosen for a notification, filled in, or as a voice assistant is to say it, after its title"""
         text = str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
-        values = {p: self.totals.get(p, "") for p in (DURATION_PLACEHOLDER, ENERGY_PLACEHOLDER, COST_PLACEHOLDER) if p in text}
+        values: dict[str, str] = {}
+        totals = self.totals
         if START_TIME_PLACEHOLDER in text:
             # the cycle under way, else the last one
-            started = self.cycle_started
-            values[START_TIME_PLACEHOLDER] = format_time(started) if started else self.totals.get(START_TIME_PLACEHOLDER, "")
+            started = self.cycle_started or totals.started
+            values[START_TIME_PLACEHOLDER] = format_time(started) if started else ""
+        if DURATION_PLACEHOLDER in text:
+            duration = totals.duration
+            values[DURATION_PLACEHOLDER] = (
+                "" if duration is None else (speak_duration if speak else format_duration)(self.hass, duration)
+            )
+        for placeholder, amount, written, said in (
+            (ENERGY_PLACEHOLDER, totals.energy, format_energy, speak_energy),
+            (COST_PLACEHOLDER, totals.cost, format_cost, speak_cost),
+        ):
+            if placeholder in text:
+                values[placeholder] = "" if amount is None else (said if speak else written)(self.hass, amount)
         if PROGRAM_PLACEHOLDER in text:
             self.last_program = self._program() or self.last_program
             values[PROGRAM_PLACEHOLDER] = self.last_program
-        if not values:
-            return text
         for placeholder, value in values.items():
             text = text.replace(placeholder, value)
+        if speak:
+            # the title said first, unless the message already names it
+            return spoken(f"{title}\n{text}" if title and title not in text else text)
+        if not values:
+            return text
         # closing up the gaps left where there's nothing to say, line by line
         return "\n".join(" ".join(line.split()) for line in text.strip().split("\n"))
 
@@ -561,8 +600,12 @@ class ApplianceWatcher:
         resend: bool = False,
         extra_data: dict[str, Any] | None = None,
         actions: list[dict[str, str]] | None = None,
+        spoken_message: str | None = None,
     ) -> None:
         data: dict[str, Any] = {"message": message, "title": title}
+        if spoken_message and spoken_message.rstrip(".") != message.rstrip(".") and not mobile_only:
+            # what Alexa or a speaker says, with no emoji and the numbers in words
+            data["spoken_message"] = spoken_message
         if actions:
             data["actions"] = actions
         if resend:

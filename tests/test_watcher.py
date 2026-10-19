@@ -1068,11 +1068,15 @@ async def test_end_reminded_until_finished(hass: HomeAssistant, freezer) -> None
     await finish_power_cycle(hass, freezer)
     assert len(calls) == 3
 
-    # told again, as the same notification and past Supernotify's duplicate check
+    # told again, as the same notification and past Supernotify's duplicate check, to phones only, with no voice
     freezer.tick(20 * 60)
     await pass_time(hass, 0)
     assert len(calls) == 4
-    assert calls[3].data == calls[2].data | {"force_resend": True}
+    assert calls[3].data == calls[2].data | {
+        "force_resend": True,
+        "delivery": ["mobile_push", "phones"],
+        "delivery_selection": "fixed",
+    }
 
     # until it's said to be finished with, which also clears the notification
     await press(hass, f"APPLIANCE_FINISHED_{entry.entry_id}")
