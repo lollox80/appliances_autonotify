@@ -95,10 +95,28 @@ DEFAULT_SNOOZE: Final[int] = 30
 ACTION_FINISHED: Final[str] = "APPLIANCE_FINISHED_"
 ACTION_REMIND: Final[str] = "APPLIANCE_REMIND_"
 ACTION_SWITCH_OFF: Final[str] = "APPLIANCE_SWITCH_OFF_"
+# buttons on the Live Activity of a robot vacuum, to pause it, let it carry on, or send it back to its dock
+ACTION_PAUSE: Final[str] = "APPLIANCE_PAUSE_"
+ACTION_RESUME: Final[str] = "APPLIANCE_RESUME_"
+ACTION_RETURN: Final[str] = "APPLIANCE_RETURN_"
 # by the language of Home Assistant, English for any other
 ACTION_TITLES: Final[dict[str, dict[str, str]]] = {
-    "en": {ACTION_FINISHED: "Finished", ACTION_REMIND: "Remind Later", ACTION_SWITCH_OFF: "Switch Off"},
-    "it": {ACTION_FINISHED: "Finito", ACTION_REMIND: "Ricordamelo dopo", ACTION_SWITCH_OFF: "Spegni presa"},
+    "en": {
+        ACTION_FINISHED: "Finished",
+        ACTION_REMIND: "Remind Later",
+        ACTION_SWITCH_OFF: "Switch Off",
+        ACTION_PAUSE: "Pause",
+        ACTION_RESUME: "Resume",
+        ACTION_RETURN: "Return to Dock",
+    },
+    "it": {
+        ACTION_FINISHED: "Finito",
+        ACTION_REMIND: "Ricordamelo dopo",
+        ACTION_SWITCH_OFF: "Spegni presa",
+        ACTION_PAUSE: "Pausa",
+        ACTION_RESUME: "Riprendi",
+        ACTION_RETURN: "Torna alla base",
+    },
 }
 MOBILE_ACTION_EVENT: Final[str] = "mobile_app_notification_action"
 # the text of the Android status bar chip, which shows it in full only up to about 7 characters
@@ -124,6 +142,8 @@ SUPERNOTIFY_MISSING: Final[str] = (
 VACUUM_CLEANING: Final[str] = "cleaning"
 VACUUM_PAUSED: Final[str] = "paused"
 VACUUM_RETURNING: Final[str] = "returning"
+# what the Live Activity of a robot vacuum says it's doing, with buttons to match
+VACUUM_SHOWN: Final[tuple[str, ...]] = (VACUUM_CLEANING, VACUUM_PAUSED, VACUUM_RETURNING)
 # back where it started, or stopped by itself, the cleaning being over
 VACUUM_DONE: Final[tuple[str, ...]] = ("docked", "idle")
 VACUUM_ERROR: Final[str] = "error"
