@@ -10,7 +10,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.appliance_autonotify.const import VACUUM_SETTLE
-from custom_components.appliance_autonotify.totals import format_duration
+from custom_components.appliance_autonotify.totals import format_duration, speak_cost, speak_duration, speak_energy, spoken
 
 from .conftest import mock_supernotify
 from .test_vacuum import add_vacuum, advance, setup_vacuum
@@ -78,7 +78,7 @@ async def test_end_tells_what_the_cycle_came_to(hass: HomeAssistant, freezer: Fr
         await setup_power_watcher(hass, grace_period=120, end_message=SUMMARY, end_title="Lavatrice")
         await wash(hass, freezer, 0.74)
     # up to when it stopped drawing power, not once that was believed
-    assert calls[-1].data["message"] == "📌 Done\n⏱ 50min\n⚡ 0.74 kWh\n💰 0.19 €"
+    assert calls[-1].data["message"] == "📌 Done\n⏱ 50 min\n⚡ 0.74 kWh\n💰 0.19 €"
 
 
 async def test_reminder_tells_it_again(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -87,9 +87,9 @@ async def test_reminder_tells_it_again(hass: HomeAssistant, freezer: FrozenDateT
     hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
     await setup_power_watcher(hass, grace_period=120, reminder=30, end_message="Washed in {duration}")
     await wash(hass, freezer, 0.5, minutes=100)
-    assert calls[-1].data["message"] == "Washed in 1h 40min"
+    assert calls[-1].data["message"] == "Washed in 1 h 40 min"
     await tick(hass, freezer, 30 * 60)
-    assert calls[-1].data["message"] == "Washed in 1h 40min"
+    assert calls[-1].data["message"] == "Washed in 1 h 40 min"
 
 
 async def test_price_from_an_entity(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -116,7 +116,7 @@ async def test_nothing_told_that_isnt_known(hass: HomeAssistant, freezer: Frozen
         await tick(hass, freezer, 10)
         await set_state(hass, POWER, "0")
         await tick(hass, freezer, 120)
-    assert calls[-1].data["message"] == "Washer done in 1min using"
+    assert calls[-1].data["message"] == "Washer done in 1 min using"
 
 
 async def test_meter_reset_part_way_through(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -125,7 +125,7 @@ async def test_meter_reset_part_way_through(hass: HomeAssistant, freezer: Frozen
     hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
     await setup_power_watcher(hass, grace_period=120, end_message="{duration} {energy}")
     await wash(hass, freezer, -99)
-    assert calls[-1].data["message"] == "50min"
+    assert calls[-1].data["message"] == "50 min"
 
 
 async def test_cycle_under_way_at_startup_has_no_totals(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -152,7 +152,7 @@ async def test_too_short_is_forgotten(hass: HomeAssistant, freezer: FrozenDateTi
     await tick(hass, freezer, 1200)
     await set_state(hass, POWER, "0")
     await tick(hass, freezer, 60)
-    assert calls[-1].data["message"] == "20min"
+    assert calls[-1].data["message"] == "20 min"
 
 
 async def test_vacuum_cleaning_is_timed_till_it_was_back(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -169,14 +169,14 @@ async def test_vacuum_cleaning_is_timed_till_it_was_back(hass: HomeAssistant, fr
     await advance(hass, freezer, 1800)
     await set_state(hass, vacuum, "docked")
     await advance(hass, freezer, VACUUM_SETTLE)
-    assert calls[-1].data["message"] == "Bruno: 1h 2min"
+    assert calls[-1].data["message"] == "Bruno: 1 h 2 min"
 
 
-def test_durations() -> None:
-    assert format_duration(timedelta(seconds=20)) == "1min"
-    assert format_duration(timedelta(minutes=8, seconds=20)) == "8min"
-    assert format_duration(timedelta(hours=2)) == "2h"
-    assert format_duration(timedelta(hours=1, minutes=40)) == "1h 40min"
+async def test_durations(hass: HomeAssistant) -> None:
+    assert format_duration(hass, timedelta(seconds=20)) == "1 min"
+    assert format_duration(hass, timedelta(minutes=8, seconds=20)) == "8 min"
+    assert format_duration(hass, timedelta(hours=2)) == "2 h"
+    assert format_duration(hass, timedelta(hours=1, minutes=40)) == "1 h 40 min"
 
 
 async def test_start_time_as_it_starts_and_ends(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -194,4 +194,55 @@ async def test_start_time_as_it_starts_and_ends(hass: HomeAssistant, freezer: Fr
     )
     await wash(hass, freezer, 0.5)
     assert calls[0].data["message"] == "🧺 Started at 11:29"
-    assert calls[-1].data["message"] == "Started at 11:29, done in 50min"
+    assert calls[-1].data["message"] == "Started at 11:29, done in 50 min"
+
+
+async def test_in_italian_with_a_voice_of_its_own(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    hass.config.language = "it"
+    hass.config.currency = "EUR"
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    with priced(hass, {"type": "grid", "number_energy_price": 0.25}):
+        await setup_power_watcher(
+            hass, grace_period=120, end_title="🧺 Bucato pronto", end_message="{duration} · {energy} · {cost}"
+        )
+        await wash(hass, freezer, 0.74)
+    assert calls[-1].data["title"] == "🧺 Bucato pronto"
+    assert calls[-1].data["message"] == "50 min · 0,74 kWh · 0,19 €"
+    assert calls[-1].data["spoken_message"] == "Bucato pronto. 50 minuti, 0,74 kilowattora, 19 centesimi."
+    # closing the Live Activity says nothing
+    assert "spoken_message" not in calls[-2].data
+
+
+async def test_no_voice_of_its_own_where_the_message_will_do(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, grace_period=120, notify_start=True)
+    await set_state(hass, POWER, "1800")
+    await tick(hass, freezer, 600)
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 120)
+    assert [c.data["message"] for c in calls] == ["Washer started", "Washer is finished", "Washer is finished"]
+    assert not any("spoken_message" in c.data for c in calls)
+
+
+async def test_said_aloud(hass: HomeAssistant) -> None:
+    hass.config.currency = "EUR"
+    hass.config.language = "it"
+    assert speak_duration(hass, timedelta(hours=1, minutes=40)) == "un'ora e 40 minuti"
+    assert speak_duration(hass, timedelta(hours=2)) == "2 ore"  # codespell:ignore ore
+    assert speak_duration(hass, timedelta(minutes=1)) == "1 minuto"
+    assert speak_cost(hass, 1.2) == "1 euro e 20 centesimi"
+    assert speak_cost(hass, 0.01) == "1 centesimo"
+    assert speak_cost(hass, 0) == "0 centesimi"
+    hass.config.language = "en"
+    assert speak_duration(hass, timedelta(hours=1, minutes=1)) == "1 hour 1 minute"
+    assert speak_cost(hass, 2) == "2 euro"
+    assert speak_energy(hass, 1.5) == "1.50 kilowatt hours"
+    hass.config.language = "de"
+    assert speak_duration(hass, timedelta(minutes=50)) == "50 min"
+    assert speak_energy(hass, 1.5) == "1,50 kWh"
+    hass.config.currency = "USD"
+    assert speak_cost(hass, 1.5) == "1,50 $"
+    assert spoken("📌 Done\n⏱️ 50 min\n\n· ok |") == "Done. 50 min. ok."
