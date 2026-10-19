@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from datetime import timedelta
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
+
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.appliance_autonotify.const import VACUUM_SETTLE
+from custom_components.appliance_autonotify.totals import format_duration
+
+from .conftest import mock_supernotify
+from .test_vacuum import add_vacuum, advance, setup_vacuum
+from .test_watcher import set_state, setup_power_watcher
+
+if TYPE_CHECKING:
+    from unittest.mock import _patch
+
+    from freezegun.api import FrozenDateTimeFactory
+    from homeassistant.core import HomeAssistant
+
+POWER = "sensor.washer_power"
+ENERGY = "sensor.washer_energy"
+SUMMARY = "📌 Done\n⏱ {duration}\n⚡ {energy}\n💰 {cost}"
+
+
+def add_plug(hass: HomeAssistant, energy_unit: str = "kWh") -> None:
+    """A smart plug, measuring both the power drawn and the energy used, as most do"""
+    source = MockConfigEntry(domain="mqtt")
+    source.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=source.entry_id, identifiers={("mqtt", "plug")})
+    registry = er.async_get(hass)
+    for key, device_class in (("power", "power"), ("energy", "energy")):
+        registry.async_get_or_create(
+            "sensor",
+            "mqtt",
+            key,
+            suggested_object_id=f"washer_{key}",
+            device_id=device.id,
+            config_entry=source,
+            original_device_class=device_class,
+        )
+    hass.states.async_set(ENERGY, "100.0", {"unit_of_measurement": energy_unit, "device_class": "energy"})
+
+
+def priced(hass: HomeAssistant, *sources: dict[str, Any]) -> _patch[Any]:
+    """Energy settings with the grid sources given"""
+    hass.config.components.add("energy")
+
+    async def manager(_: HomeAssistant) -> SimpleNamespace:
+        return SimpleNamespace(data={"energy_sources": [{"type": "solar"}, *sources]})
+
+    return patch("homeassistant.components.energy.data.async_get_manager", manager)
+
+
+async def tick(hass: HomeAssistant, freezer: FrozenDateTimeFactory, seconds: float) -> None:
+    await advance(hass, freezer, seconds)
+
+
+async def wash(hass: HomeAssistant, freezer: FrozenDateTimeFactory, used: float, minutes: float = 50) -> None:
+    """A wash drawing power for the minutes given, the meter going up by what it used"""
+    await set_state(hass, POWER, "1800")
+    await tick(hass, freezer, minutes * 60)
+    hass.states.async_set(ENERGY, f"{100 + used}", hass.states.get(ENERGY).attributes)
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 120)
+
+
+async def test_end_tells_what_the_cycle_came_to(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    hass.config.currency = "EUR"
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    with priced(hass, {"type": "grid", "number_energy_price": 0.25, "entity_energy_price": None}):
+        await setup_power_watcher(hass, grace_period=120, end_message=SUMMARY, end_title="Lavatrice")
+        await wash(hass, freezer, 0.74)
+    # up to when it stopped drawing power, not once that was believed
+    assert calls[-1].data["message"] == "📌 Done\n⏱ 50min\n⚡ 0.74 kWh\n💰 0.19 €"
+
+
+async def test_reminder_tells_it_again(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, grace_period=120, reminder=30, end_message="Washed in {duration}")
+    await wash(hass, freezer, 0.5, minutes=100)
+    assert calls[-1].data["message"] == "Washed in 1h 40min"
+    await tick(hass, freezer, 30 * 60)
+    assert calls[-1].data["message"] == "Washed in 1h 40min"
+
+
+async def test_price_from_an_entity(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    hass.config.currency = "GBP"
+    add_plug(hass, energy_unit="Wh")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    # per MWh, and set the way it was before grid connections, one price per meter
+    hass.states.async_set("sensor.tariff", "300", {"unit_of_measurement": "GBP/MWh"})
+    source = {"type": "grid", "flow_from": [{"stat_energy_from": "sensor.meter", "entity_energy_price": "sensor.tariff"}]}
+    with priced(hass, source):
+        await setup_power_watcher(hass, grace_period=120, end_message="{energy}, {cost}")
+        await wash(hass, freezer, 2000)
+    assert calls[-1].data["message"] == "2.00 kWh, 0.60 £"
+
+
+async def test_nothing_told_that_isnt_known(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    # no energy meter, and no price
+    with priced(hass, {"type": "grid", "entity_energy_price": "sensor.gone"}):
+        await setup_power_watcher(hass, grace_period=120, end_message="{name} done in {duration} using {energy} {cost}")
+        await set_state(hass, POWER, "1800")
+        await tick(hass, freezer, 10)
+        await set_state(hass, POWER, "0")
+        await tick(hass, freezer, 120)
+    assert calls[-1].data["message"] == "Washer done in 1min using"
+
+
+async def test_meter_reset_part_way_through(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, grace_period=120, end_message="{duration} {energy}")
+    await wash(hass, freezer, -99)
+    assert calls[-1].data["message"] == "50min"
+
+
+async def test_cycle_under_way_at_startup_has_no_totals(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "1800", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, grace_period=120, end_message="Washer finished {duration}")
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 120)
+    assert calls[-1].data["message"] == "Washer finished"
+
+
+async def test_too_short_is_forgotten(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    await setup_power_watcher(hass, grace_period=60, min_duration=300, end_message="{duration}")
+    await set_state(hass, POWER, "1800")
+    await tick(hass, freezer, 60)
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 3600)
+    assert calls == []
+    # so the next cycle is timed from when it began
+    await set_state(hass, POWER, "1800")
+    await tick(hass, freezer, 1200)
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 60)
+    assert calls[-1].data["message"] == "20min"
+
+
+async def test_vacuum_cleaning_is_timed_till_it_was_back(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    device_id, vacuum = add_vacuum(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id, end_message="{name}: {duration}")
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1800)
+    # back to wash its mop, then out again
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 120)
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1800)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert calls[-1].data["message"] == "Bruno: 1h 2min"
+
+
+def test_durations() -> None:
+    assert format_duration(timedelta(seconds=20)) == "1min"
+    assert format_duration(timedelta(minutes=8, seconds=20)) == "8min"
+    assert format_duration(timedelta(hours=2)) == "2h"
+    assert format_duration(timedelta(hours=1, minutes=40)) == "1h 40min"

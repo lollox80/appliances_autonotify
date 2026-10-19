@@ -56,6 +56,7 @@ from .const import (
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
+    COST_PLACEHOLDER,
     CYCLE_SETTLE,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
@@ -66,6 +67,8 @@ from .const import (
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
+    DURATION_PLACEHOLDER,
+    ENERGY_PLACEHOLDER,
     ENTITY_DOMAINS,
     FAST_PREHEAT_KEY,
     FAST_PREHEAT_PHASE,
@@ -129,6 +132,7 @@ from .const import (
 from .dashboards import dashboard_url
 from .discovery import companions, cycle_entities, is_cycle_entity, role_key
 from .supernotify_api import deliveries_by_transport, supernotify_available
+from .totals import energy_entity_id, energy_price, energy_reading, format_cost, format_duration, format_energy
 from .words import name_type
 
 if TYPE_CHECKING:
@@ -190,6 +194,14 @@ class ApplianceWatcher:
         self._cancel_reminder: CALLBACK_TYPE | None = None
         # the end of the cycle, waiting to see that the appliance doesn't carry on
         self._cancel_end: CALLBACK_TYPE | None = None
+        # when the cycle under way began, and when it stopped, if it has, while waiting to see it doesn't carry on
+        self.cycle_started: datetime | None = None
+        self.cycle_stopped: datetime | None = None
+        # the energy meter of the appliance, where it has one, and its reading as the cycle began
+        self._energy_entity_id: str | None = None
+        self._energy_start: float | None = None
+        # what the last cycle came to, by placeholder, for its end and its reminders
+        self.totals: dict[str, str] = {}
 
     @callback
     def async_start(self) -> None:
@@ -202,9 +214,46 @@ class ApplianceWatcher:
         self.entry.async_on_unload(self._stop_reminding)
 
     def _keep_running(self) -> None:
+        self.cycle_stopped = None
         if self._cancel_end is not None:
             self._cancel_end()
             self._cancel_end = None
+
+    def _totals_device_id(self) -> str | None:
+        """The device whose energy meter tells what a cycle used"""
+        return self.entry.data.get(CONF_DEVICE_ID)
+
+    @callback
+    def _cycle_began(self) -> None:
+        """Note when the cycle began, and the energy meter's reading, to tell what it came to once it's over"""
+        if self.cycle_started is not None:
+            return
+        self.cycle_started = dt_util.utcnow()
+        self.cycle_stopped = None
+        self._energy_entity_id = energy_entity_id(self.hass, self._totals_device_id())
+        self._energy_start = energy_reading(self.hass, self._energy_entity_id)
+
+    @callback
+    def _cycle_forgotten(self) -> None:
+        """Not a cycle after all"""
+        self.cycle_started = None
+        self.cycle_stopped = None
+
+    async def _sum_up(self) -> None:
+        """What the cycle just over came to, nothing being known of one already under way as Home Assistant started"""
+        totals: dict[str, str] = {}
+        if self.cycle_started is not None:
+            # up to when it stopped, not when that was believed
+            totals[DURATION_PLACEHOLDER] = format_duration((self.cycle_stopped or dt_util.utcnow()) - self.cycle_started)
+            end = energy_reading(self.hass, self._energy_entity_id)
+            # nothing to tell if the meter was reset part way through
+            if self._energy_start is not None and end is not None and end >= self._energy_start:
+                used = end - self._energy_start
+                totals[ENERGY_PLACEHOLDER] = format_energy(used)
+                if (price := await energy_price(self.hass)) is not None:
+                    totals[COST_PLACEHOLDER] = format_cost(self.hass, used * price)
+        self.totals = totals
+        self._cycle_forgotten()
 
     def _name_icon(self) -> str:
         return TYPE_ICONS.get(name_type(self.hass, self.name) or "", DEFAULT_ICON)
@@ -241,6 +290,9 @@ class ApplianceWatcher:
 
     async def _started(self, context: Context) -> None:
         self.program_kept = False
+        self._cycle_began()
+        # nothing yet to tell of this one
+        self.totals = {}
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
         async with self._sending:
@@ -292,6 +344,7 @@ class ApplianceWatcher:
     async def _ended(self, finished: bool, context: Context) -> None:
         self.last_program = self._program() or self.last_program
         self.program_kept = True
+        await self._sum_up()
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
         notify = finished and self.notify_end
@@ -384,12 +437,17 @@ class ApplianceWatcher:
 
     def _text(self, key: str, default: str) -> str:
         text = str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
-        if PROGRAM_PLACEHOLDER not in text:
+        values = {p: self.totals.get(p, "") for p in (DURATION_PLACEHOLDER, ENERGY_PLACEHOLDER, COST_PLACEHOLDER) if p in text}
+        if PROGRAM_PLACEHOLDER in text:
+            if not self.program_kept:
+                self.last_program = self._program() or self.last_program
+            values[PROGRAM_PLACEHOLDER] = self.last_program
+        if not values:
             return text
-        if not self.program_kept:
-            self.last_program = self._program() or self.last_program
-        # closing up the gap left where there's no program to name
-        return " ".join(text.replace(PROGRAM_PLACEHOLDER, self.last_program).split(" ")).strip()
+        for placeholder, value in values.items():
+            text = text.replace(placeholder, value)
+        # closing up the gaps left where there's nothing to say, line by line
+        return "\n".join(" ".join(line.split()) for line in text.strip().split("\n"))
 
     def _state(self, key: str) -> State | None:
         """The state of one of the appliance's entities, where it has the entity and its state is known, or failing
@@ -909,6 +967,8 @@ class PowerWatcher(ApplianceWatcher):
             if not self.pending:
                 self.pending = True
                 self._drawn_for = 0
+                # the cycle began as it first drew power, not once it had for long enough to count
+                self._cycle_began()
             if self._drawing_since is None:
                 # time above the threshold adds up across drop outs, so one in the first minute doesn't start it over
                 self._drawing_since = dt_util.utcnow()
@@ -920,13 +980,19 @@ class PowerWatcher(ApplianceWatcher):
         elif self.running or self.pending:
             self._stop_counting()
             if self._cancel_end is None:
+                self.cycle_stopped = dt_util.utcnow()
                 self._cancel_end = async_call_later(self.hass, self.grace_period, partial(self._grace_over, event.context))
 
     @callback
     def _keep_running(self) -> None:
+        self.cycle_stopped = None
         if self._cancel_end is not None:
             self._cancel_end()
             self._cancel_end = None
+
+    def _totals_device_id(self) -> str | None:
+        entity = er.async_get(self.hass).async_get(self.power_entity_id)
+        return entity.device_id if entity is not None else None
 
     @callback
     def _stop_counting(self) -> None:
@@ -954,6 +1020,7 @@ class PowerWatcher(ApplianceWatcher):
             _LOGGER.debug("APPLIANCES %s drew power for %.0fs, too short for a cycle", self.name, self._drawn_for)
             self.pending = False
             self._drawn_for = 0
+            self._cycle_forgotten()
             return
         self.running = False
         await self._ended(True, _later(context))
@@ -996,6 +1063,7 @@ class VacuumWatcher(ApplianceWatcher):
     @callback
     def _keep_running(self) -> None:
         self._pending = None
+        self.cycle_stopped = None
         if self._cancel_end is not None:
             self._cancel_end()
             self._cancel_end = None
@@ -1057,6 +1125,8 @@ class VacuumWatcher(ApplianceWatcher):
     ) -> None:
         self._keep_running()
         self._pending = kind
+        # back, or stuck, from now on unless it carries on
+        self.cycle_stopped = dt_util.utcnow()
         self._cancel_end = async_call_later(self.hass, delay, partial(then, context))
 
     async def _settled(self, context: Context, now: datetime) -> None:
