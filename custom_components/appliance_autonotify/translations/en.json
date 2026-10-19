@@ -80,7 +80,7 @@
                 "sections": {
                     "start": {
                         "name": "Start message",
-                        "description": "Sent when the appliance starts. Clear a box to go back to the usual wording. Put {program_placeholder} where the program under way should be named.",
+                        "description": "Sent when the appliance starts. Clear a box to go back to the usual wording. Put {program_placeholder} where the program under way should be named. {start_time_placeholder} is replaced by the time it started, such as 11:29.",
                         "data": {
                             "start_title": "Title",
                             "start_message": "Message"

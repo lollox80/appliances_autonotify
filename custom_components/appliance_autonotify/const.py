@@ -77,6 +77,8 @@ PROGRAM_PLACEHOLDER: Final[str] = "{program}"
 DURATION_PLACEHOLDER: Final[str] = "{duration}"
 ENERGY_PLACEHOLDER: Final[str] = "{energy}"
 COST_PLACEHOLDER: Final[str] = "{cost}"
+# the time of day the cycle began, as it runs and once it's over
+START_TIME_PLACEHOLDER: Final[str] = "{start_time}"
 DEFAULT_TITLE: Final[str] = "{name}"
 DEFAULT_START_MESSAGE: Final[str] = "{name} started"
 DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
