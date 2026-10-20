@@ -93,12 +93,33 @@ SUPERNOTIFY_MISSING: Final[str] = (
     "Home Assistant app, with no Live Activity. Install Supernotify from HACS for the full experience."
 )
 
-# translation key, per vendor platform, of the entity whose state follows the appliance cycle
-CYCLE_KEYS: Final[dict[str, str]] = {"home_connect": "operation_state"}
+# what each entity made use of does, by its translation key as Home Connect has it: the state of the cycle, how far
+# along it is, when it will finish, and the program
+CYCLE_KEY: Final[str] = "operation_state"
 PROGRESS_KEY: Final[str] = "program_progress"
 FINISH_TIME_KEY: Final[str] = "program_finish_time"
 # selects, unlike the others, of the program under way, and of the one chosen, which is all an oven reports
 PROGRAM_KEYS: Final[tuple[str, ...]] = ("active_program", "selected_program")
+# what the appliance is doing within its cycle, such as drying then cooling, which Home Connect doesn't report
+STAGE_KEY: Final[str] = "stage"
+# the same entities as other integrations name them, whichever integration they come from, since it's what an
+# entity does that matters, and which entities an appliance has together
+ROLE_KEYS: Final[dict[str, str]] = {
+    # Samsung washers, dryers and dishwashers, through SmartThings
+    **{f"{kind}_machine_state": CYCLE_KEY for kind in ("washer", "dryer", "dishwasher")},
+    **{f"{kind}_job_state": STAGE_KEY for kind in ("washer", "dryer", "dishwasher")},
+    "completion_time": FINISH_TIME_KEY,
+    # and through LocalThings, on the local network
+    "machine_state": CYCLE_KEY,
+    "progress": STAGE_KEY,
+    "progress_percentage": PROGRESS_KEY,
+    "finish_time": FINISH_TIME_KEY,
+}
+# beginnings of translation keys of an entity named per model
+ROLE_KEY_PREFIXES: Final[dict[str, str]] = {"washer_cycle_table": "selected_program", "dryer_cycle_table": "selected_program"}
+# the type of appliance from the beginning of the translation key of any of its entities, for an integration that
+# names its entities for the type of appliance
+KEY_TYPE_PREFIXES: Final[dict[str, str]] = {"dishwasher_": "dishwasher", "washer_": "washer", "dryer_": "dryer"}
 # an oven warming up has no progress of its own, only how hot it is and how hot it's to be
 TARGET_TEMPERATURE_KEY: Final[str] = "setpoint_temperature"
 CAVITY_TEMPERATURE_KEY: Final[str] = "oven_current_cavity_temperature"
@@ -107,6 +128,7 @@ FAST_PREHEAT_KEY: Final[str] = "fast_pre_heat"
 # domain, by translation key, of each entity of an appliance that's made use of
 ENTITY_DOMAINS: Final[dict[str, str]] = {
     PROGRESS_KEY: "sensor",
+    STAGE_KEY: "sensor",
     FINISH_TIME_KEY: "sensor",
     **dict.fromkeys(PROGRAM_KEYS, "select"),
     TARGET_TEMPERATURE_KEY: "number",
@@ -121,13 +143,19 @@ PREHEAT_SETTLE: Final[float] = 3
 # an event sensor is `off` until whatever it tells of has happened
 STATES_EVENT_ON: Final[tuple[str, ...]] = ("present", "confirmed", "on")
 
-STATE_RUN: Final[str] = "run"
+# the states of a cycle, with the words different integrations use for the same thing
+STATES_RUN: Final[tuple[str, ...]] = ("run", "active")
 # a cycle already under way, so not a new start when `run` follows
-STATES_ACTIVE: Final[tuple[str, ...]] = ("run", "pause", "actionrequired")
+STATES_ACTIVE: Final[tuple[str, ...]] = (*STATES_RUN, "pause", "actionrequired")
 # the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`
-STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive")
+STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "stop")
 # over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed
-STATES_SETTLING: Final[tuple[str, ...]] = ("ready",)
+STATES_SETTLING: Final[tuple[str, ...]] = ("ready", "idle")
+# stages that mean the cycle is over, though the cycle state may stay running a long while after, as a dryer's does
+# while it tumbles its load now and then so it won't crease
+STAGES_FINISHED: Final[tuple[str, ...]] = ("finished", "finish", "wrinkle_prevent")
+# stages that say nothing of what it's doing
+STAGES_NONE: Final[tuple[str, ...]] = ("none", "idle")
 # seconds an appliance is left to settle before the cycle is over
 CYCLE_SETTLE: Final[float] = 10
 # seconds a Live Activity is left to open before anything more is sent to it, since a push sent straight after the

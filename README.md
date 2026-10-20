@@ -15,13 +15,14 @@ shows a [Live Activity](https://companion.home-assistant.io/docs/notifications/l
 and time remaining while it runs, and you're told when it finishes.
 
 This is an early version to try with real appliances. It supports Bosch, Neff and Siemens appliances connected
-with the Home Assistant [Home Connect](https://www.home-assistant.io/integrations/home_connect/) integration,
-in English only. Any other appliance can be added by hand if it has a power monitor, such as a smart plug.
+with the Home Assistant [Home Connect](https://www.home-assistant.io/integrations/home_connect/) integration, and
+Samsung washers, dryers and dishwashers through [SmartThings](https://www.home-assistant.io/integrations/smartthings/)
+or [LocalThings](https://github.com/mbillow/localthings), in English only. Any other appliance can be added by hand if it has a power monitor, such as a smart plug.
 
 ## What You Need
 
 - Home Assistant 2026.7 or later
-- An appliance set up with the Home Connect integration, or one with a power sensor
+- An appliance set up with the Home Connect, SmartThings or LocalThings integration, or one with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification.
   - `v2.14.0` recommended as minimum, though most features will work with earlier releases
@@ -41,7 +42,7 @@ unless you choose other notify entities.
 2. In *Settings*, *Devices & services*, choose *Add integration* and pick *Appliance Auto Notify*
 3. Leave *Set up appliances automatically* on, and submit
 
-That's all. Every Home Connect appliance is set up straight away, and so is any you add later. Each is listed on
+That's all. Every appliance with a cycle Home Assistant reports is set up straight away, and so is any you add later. Each is listed on
 the integration's page, alongside *Automatic discovery*, and notifies with no further settings.
 
 To stop the notifications for an appliance, disable it rather than delete it, since a deleted appliance is found
@@ -52,6 +53,25 @@ and set up again.
 Turn *Set up appliances automatically* off, on the first screen or later from the settings of *Automatic discovery*,
 and appliances are instead offered as *Discovered* on the *Devices & services* page. Choose *Add* to set one up,
 or *Ignore* on any you don't want.
+
+### Appliances Through Other Integrations
+
+An appliance is found by what its entities do, not by the integration they come from: a sensor of the state of its
+cycle, whose states include one of a cycle under way, along with whichever of its stage, progress, finish time and
+program the integration reports. Integrations name these differently, and use different words for the same states,
+`run` or `active` for a cycle under way and `stop` or `finished` for its end, so both are kept as lists of the names
+and states known, which is all another integration with the same kind of entities needs.
+
+A stage that means the cycle is over ends it there, such as a dryer's *Wrinkle prevent*, when it only tumbles its load
+now and then so it won't crease, though its cycle state stays running for as long as that goes on, and running on
+from there isn't a new cycle until the cycle state has said it's over.
+
+The same appliance through two integrations, as a Samsung one is through SmartThings and LocalThings, which share its
+id, is set up once, through the integration that reaches it on the local network rather than through the vendor's
+cloud, or failing that the one that tells more of its cycle. The other is only listened to while the first can't be
+heard from, though an end it told meanwhile still counts once the first goes quiet. An appliance already set up
+through one isn't offered again when the other is added, and one offered through the cloud is offered through the
+local network instead once that's found.
 
 ### Power Monitored Appliances
 
@@ -165,7 +185,8 @@ used instead, as in "Washer" or "Kettle".
   Update in the app's usual channel is silent. Its sound can be changed in the phone's settings for the Home
   Assistant app, and is kept from then on
 
-- Pre-heating is the only phase of a cycle there is to tell of, since Home Connect reports none for a dishwasher or washer, such as pre-wash or rinse
+- Pre-heating is the only phase of a Home Connect appliance's cycle there is to tell of, since Home Connect reports none for a dishwasher or washer, such as pre-wash or rinse
+- An appliance with a stage but no progress, such as a Samsung one through SmartThings, has its Live Activity brought up to date only as its stage changes, so its time remaining may lag a change of its finish time until then
 
 - If the appliance never reports the end of its cycle, the Live Activity stays on the phone until dismissed
 - If Home Assistant restarts mid-cycle, the end is still notified and the Live Activity closed

@@ -170,7 +170,7 @@ async def test_existing_install_without_discovery_entry(hass: HomeAssistant) -> 
     assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
 
 
-async def test_new_appliance_ignores_other_platforms(hass: HomeAssistant) -> None:
+async def test_new_cycle_state_of_no_device_is_ignored(hass: HomeAssistant) -> None:
     await start_discovery(hass)
     er.async_get(hass).async_get_or_create("sensor", "demo", "other", translation_key="operation_state")
     await hass.async_block_till_done()
