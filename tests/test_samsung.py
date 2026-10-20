@@ -179,7 +179,8 @@ async def test_stopped_is_the_end(hass: HomeAssistant) -> None:
     entry = await setup_appliance(hass, dryer["device_id"])
     for state in ("pause", "run", "unavailable", "run"):
         await set_state(hass, dryer["dryer_machine_state"], state)
-    assert calls == []
+    # paused and going again only bring the Live Activity up to date
+    assert all(call.data["extra_data"].get("silent") for call in calls)
     await set_state(hass, dryer["dryer_machine_state"], "stop")
     assert calls[-1].data == ended("Asciugatrice", entry.entry_id, TUMBLE_DRYER, force_resend=True)
 

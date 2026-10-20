@@ -68,6 +68,15 @@ report a past error again for a while as they reconnect, with the vacuum carryin
 While it cleans, the Live Activity says what it's doing, cleaning, paused or on its way back, with buttons to match
 where the vacuum has them: *Pause* and *Return to Dock* while it cleans, *Resume* and *Return to Dock* while paused.
 
+### 3D Printers
+
+A Bambu Lab printer set up with [ha-bambulab](https://github.com/greghesp/ha-bambulab) is found and set up like the
+other appliances, with each print as the cycle. It starts as the printer gets ready, heating and levelling its bed, and
+the Live Activity tells what it's doing at each stage, counting down to the end from the time left, which stops while
+the print is paused. The name of the print fills in `{program}`, but isn't put in the title. A finished print is told as
+for any appliance, a failed or cancelled one only has its Live Activity closed. The printer going offline for a while
+leaves the print as it was.
+
 ### Power Monitored Appliances
 
 An appliance with no supported integration can be added if a sensor measures the power it draws.

@@ -241,11 +241,11 @@ async def test_vacuum_long_on_its_dock_part_way_through(hass: HomeAssistant, fre
     ):
         await set_state(hass, vacuum, state)
         await advance(hass, freezer, seconds)
-    assert [call.data["message"] for call in calls] == ["Bruno started"]
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started"]
 
     await set_state(hass, vacuum, "docked")
     await advance(hass, freezer, VACUUM_SETTLE)
-    assert [call.data["message"] for call in calls] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
 
 
 async def test_vacuum_straight_back_from_cleaning_for_good(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -262,9 +262,9 @@ async def test_vacuum_straight_back_from_cleaning_for_good(hass: HomeAssistant, 
     # a second docked, or idle, doesn't make it any sooner
     await set_state(hass, vacuum, "idle")
     await advance(hass, freezer, VACUUM_MIDWAY_SETTLE - VACUUM_SETTLE - 1)
-    assert len(calls) == 1
+    assert len(told(calls)) == 1
     await advance(hass, freezer, 1)
-    assert [call.data["message"] for call in calls] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
 
 
 async def test_vacuum_paused_on_its_dock_once_back(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -285,12 +285,12 @@ async def test_vacuum_paused_on_its_dock_once_back(hass: HomeAssistant, freezer:
     await advance(hass, freezer, 60)
     await set_state(hass, vacuum, "unavailable")
     await advance(hass, freezer, VACUUM_SETTLE - 176)
-    assert [call.data["message"] for call in calls] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
 
     # nor is it a new cleaning when it's back from the cloud
     for state in ("paused", "docked"):
         await set_state(hass, vacuum, state)
-    assert len(calls) == 3
+    assert len(told(calls)) == 3
 
 
 async def test_vacuum_paused_out_cleaning(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -306,7 +306,7 @@ async def test_vacuum_paused_out_cleaning(hass: HomeAssistant, freezer: FrozenDa
     await advance(hass, freezer, 600)
     await set_state(hass, vacuum, "paused")
     await advance(hass, freezer, VACUUM_BLIP_SETTLE)
-    assert len(calls) == 1
+    assert len(told(calls)) == 1
 
 
 async def test_vacuum_cleaning_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -322,7 +322,7 @@ async def test_vacuum_cleaning_through_a_restart(hass: HomeAssistant, freezer: F
     await advance(hass, freezer, 44)
     await set_state(hass, vacuum, "docked")
     await advance(hass, freezer, VACUUM_SETTLE)
-    assert [call.data["message"] for call in calls] == ["Bruno is finished", "Bruno is finished"]
+    assert [call.data["message"] for call in told(calls)] == ["Bruno is finished", "Bruno is finished"]
 
 
 async def test_vacuum_docked_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -335,10 +335,10 @@ async def test_vacuum_docked_through_a_restart(hass: HomeAssistant, freezer: Fro
     for state in ("docked", "error", "docked"):
         await set_state(hass, vacuum, state)
     await advance(hass, freezer, VACUUM_MIDWAY_SETTLE)
-    assert calls == []
+    assert told(calls) == []
 
     await set_state(hass, vacuum, "cleaning")
-    assert [call.data["message"] for call in calls] == ["Bruno started"]
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started"]
 
 
 async def test_vacuum_docked_as_it_sets_off_and_never_heard_from_again(
