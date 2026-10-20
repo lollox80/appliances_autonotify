@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from datetime import timedelta
 from functools import partial
@@ -14,6 +15,7 @@ from homeassistant.const import (
     ATTR_SUPPORTED_FEATURES,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_DEVICE_ID,
+    CONF_TYPE,
     STATE_ON,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -31,12 +33,16 @@ from homeassistant.util.unit_conversion import DurationConverter, PowerConverter
 
 from .const import (
     ACTION_FINISHED,
+    ACTION_MAINTAINED,
+    ACTION_MAINTENANCE_LATER,
     ACTION_PAUSE,
     ACTION_REMIND,
     ACTION_RESUME,
     ACTION_RETURN,
     ACTION_SWITCH_OFF,
     ACTION_TITLES,
+    ACTION_TRACK_MAINTENANCE,
+    ANDROID_BUTTONS,
     ANDROID_CHANNEL,
     APPLIANCE_TYPES,
     CAVITY_TEMPERATURE_KEY,
@@ -48,6 +54,7 @@ from .const import (
     CONF_GRACE_PERIOD,
     CONF_LIVE_DETAIL,
     CONF_LIVE_TITLE,
+    CONF_MAINTENANCE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
@@ -74,6 +81,7 @@ from .const import (
     DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
+    DOMAIN,
     DURATION_PLACEHOLDER,
     ENERGY_PLACEHOLDER,
     ENTITY_DOMAINS,
@@ -89,6 +97,7 @@ from .const import (
     LIVE_TITLE_NAME,
     LIVE_TITLE_NAME_PROGRAM,
     LIVE_TITLE_PROGRAM,
+    MAINTENANCE_ACTION_TITLES,
     MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
     MOBILE_PUSH_TRANSPORT,
@@ -127,6 +136,7 @@ from .const import (
     SUPERNOTIFY_DOMAIN,
     TARGET_TEMPERATURE_KEY,
     TEMPERATURE_STEP,
+    TYPE_DISCOVERY,
     TYPE_ICONS,
     TYPE_VACUUM,
     VACUUM_BLIP,
@@ -144,6 +154,7 @@ from .const import (
 )
 from .dashboards import dashboard_url
 from .discovery import companions, cycle_entities, is_cycle_entity, role_key
+from .maintenance import DATA_MAINTENANCE, MaintenanceItem, MaintenanceTracker, maintenance_items, translated
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .totals import (
     CycleTotals,
@@ -232,10 +243,51 @@ class ApplianceWatcher:
         self._energy_start: float | None = None
         # what the last cycle came to, by placeholder, for its end and its reminders
         self.totals: CycleTotals = CycleTotals()
+        # whether maintenance is tracked, None until it's been asked for or turned down
+        self.maintenance: bool | None = entry.options.get(CONF_MAINTENANCE)
+        # the items there are to track, whether or not they are, so tracking is only offered where there's something
+        self.maintenance_items: list[MaintenanceItem] = []
+        # tracking offered on the end notification of the cycle just over
+        self._offering: bool = False
 
     @callback
     def async_start(self) -> None:
         raise NotImplementedError
+
+    @property
+    def _tracker(self) -> MaintenanceTracker | None:
+        return self.hass.data.get(DATA_MAINTENANCE)
+
+    @callback
+    def async_start_maintenance(self) -> None:
+        """The items for the type of appliance, and those its integration reports the life of, tracked once asked for"""
+        self.maintenance_items = maintenance_items(
+            self.hass, self.appliance_type, self.entry.data.get(CONF_DEVICE_ID), self.entry.options
+        )
+        if self.maintenance:
+            self._track_maintenance()
+
+    @callback
+    def _track_maintenance(self) -> None:
+        tracker = self._tracker
+        if tracker is None or not self.maintenance_items:
+            return
+        tracker.async_register(self.entry.entry_id, self.name, self.maintenance_items, self._part_due)
+        self.entry.async_on_unload(partial(tracker.async_unregister, self.entry.entry_id))
+        if not any(
+            entry.data.get(CONF_TYPE) == TYPE_DISCOVERY and not entry.disabled_by
+            for entry in self.hass.config_entries.async_entries(DOMAIN)
+        ):
+            _LOGGER.warning(
+                "APPLIANCES Maintenance of %s is tracked, but without the Automatic discovery entry there's no list of it",
+                self.name,
+            )
+
+    @callback
+    def _part_due(self, item: MaintenanceItem) -> None:
+        """A part fallen due between cycles, told of straight away"""
+        if (tracker := self._tracker) is not None:
+            self.entry.async_create_task(self.hass, self._tell_maintenance(tracker, item, Context()))
 
     @callback
     def async_listen_for_actions(self) -> None:
@@ -393,6 +445,11 @@ class ApplianceWatcher:
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
         notify = finished and self.notify_end
+        await self._tell_ended(notify, title, message, context)
+        if finished:
+            await self._maintenance_due(context)
+
+    async def _tell_ended(self, notify: bool, title: str, message: str, context: Context) -> None:
         async with self._sending:
             if not supernotify_available(self.hass):
                 if notify:
@@ -407,11 +464,95 @@ class ApplianceWatcher:
                 extra_data={"mobile_push_notification_tag": self.tag, "mobile_push_clear_notification": True},
             )
             if notify:
+                tracker = self._tracker
+                # offered once, so anyone who'd want it needn't go looking, and nobody's bothered who wouldn't
+                self._offering = (
+                    tracker is not None
+                    and self.maintenance is None
+                    and bool(self.maintenance_items)
+                    and not tracker.offered(self.entry.entry_id)
+                )
                 # the same end message as the last cycle would otherwise be dropped as a duplicate
                 await self._tell_end(context, resend=True)
+                if tracker is not None and self._offering:
+                    tracker.async_mark_offered(self.entry.entry_id)
                 self._reminders_sent = 0
                 if self.reminder:
                     self._remind_in(self.reminder, context)
+
+    async def _maintenance_due(self, context: Context) -> None:
+        """Another cycle counted, and each item it has made due told of, the once"""
+        tracker = self._tracker
+        if tracker is None or not tracker.tracked(self.entry.entry_id):
+            return
+        for item in tracker.async_cycle_ended(self.entry.entry_id):
+            await self._tell_maintenance(tracker, item, context)
+
+    def _maintenance_tag(self, item: MaintenanceItem) -> str:
+        # short, a part's key being its entity id, and iOS keeping only 64 bytes of a tag
+        return f"{self.tag}_maintenance_{hashlib.sha256(item.key.encode()).hexdigest()[:8]}"
+
+    async def _tell_maintenance(self, tracker: MaintenanceTracker, item: MaintenanceItem, context: Context) -> None:
+        message = tracker.message(self.entry.entry_id, item)
+        if not supernotify_available(self.hass):
+            await self._send_message(message, self.name, context)
+            return
+        titles = translated(self.hass, MAINTENANCE_ACTION_TITLES)
+        actions = [
+            {"action": f"{button}{self.entry.entry_id}_{item.key}", "title": titles[button]}
+            for button in (ACTION_MAINTAINED, ACTION_MAINTENANCE_LATER)
+        ]
+        async with self._sending:
+            await self._supernotify(
+                message,
+                self.name,
+                context,
+                resend=True,
+                actions=actions + self._tap_actions(),
+                extra_data={
+                    "notification_icon": "mdi:wrench-clock",
+                    "mobile_push_notification_tag": self._maintenance_tag(item),
+                },
+            )
+
+    async def _maintenance_pressed(self, action: str, context: Context) -> bool:
+        """The buttons of the notification of an item due, and the one offering to track maintenance at all"""
+        if action == f"{ACTION_TRACK_MAINTENANCE}{self.entry.entry_id}":
+            # once only, a press left on an old notification not undoing it being turned off since
+            if self.entry.options.get(CONF_MAINTENANCE) is None:
+                self.maintenance = True
+                # nor offered again by its reminders
+                self._offering = False
+                # tracked from now without a reload, which would drop the reminders of the end just told
+                self._track_maintenance()
+                self.hass.config_entries.async_update_entry(
+                    self.entry, options=dict(self.entry.options) | {CONF_MAINTENANCE: True}
+                )
+            return True
+        tracker = self._tracker
+        for button in (ACTION_MAINTAINED, ACTION_MAINTENANCE_LATER):
+            prefix = f"{button}{self.entry.entry_id}_"
+            if tracker is None or not action.startswith(prefix):
+                continue
+            item = tracker.item(self.entry.entry_id, action.removeprefix(prefix))
+            if item is None:
+                return True
+            if button == ACTION_MAINTAINED:
+                await tracker.async_done(self.entry.entry_id, item.key, context)
+            else:
+                tracker.async_snooze(self.entry.entry_id, item.key)
+            await self._supernotify(
+                self.name,
+                self.name,
+                context,
+                mobile_only=True,
+                extra_data={
+                    "mobile_push_notification_tag": self._maintenance_tag(item),
+                    "mobile_push_clear_notification": True,
+                },
+            )
+            return True
+        return False
 
     async def _tell_end(self, context: Context, resend: bool = False, reminder: bool = False) -> None:
         """The end, with buttons to say the appliance has been seen to, to be reminded later, or to switch it off"""
@@ -429,7 +570,15 @@ class ApplianceWatcher:
         )
 
     def _end_actions(self) -> list[dict[str, str]]:
-        return self._buttons([ACTION_FINISHED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self._switchable() else []))
+        buttons = [ACTION_FINISHED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self._switchable() else [])
+        if self._offering and len(buttons) >= ANDROID_BUTTONS:
+            # Android shows only 3, so in place of Remind Later on the one notification it's offered on
+            buttons.remove(ACTION_REMIND)
+        actions = self._buttons(buttons)
+        if self._offering:
+            track = translated(self.hass, MAINTENANCE_ACTION_TITLES)[ACTION_TRACK_MAINTENANCE]
+            actions.append({"action": f"{ACTION_TRACK_MAINTENANCE}{self.entry.entry_id}", "title": track})
+        return actions
 
     def _switchable(self) -> bool:
         """Whether there's a smart plug to switch off, one chosen and since removed not being offered"""
@@ -459,6 +608,8 @@ class ApplianceWatcher:
 
     async def _action_pressed(self, event: Event) -> None:
         action = str(event.data.get("action") or "")
+        if await self._maintenance_pressed(action, event.context):
+            return
         if action == f"{ACTION_FINISHED}{self.entry.entry_id}":
             self._stop_reminding()
             await self._supernotify(

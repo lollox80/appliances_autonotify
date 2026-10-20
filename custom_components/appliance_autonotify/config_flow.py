@@ -35,6 +35,8 @@ from .const import (
     CONF_GRACE_PERIOD,
     CONF_LIVE_DETAIL,
     CONF_LIVE_TITLE,
+    CONF_MAINTENANCE,
+    CONF_MAINTENANCE_PREFIX,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
@@ -66,6 +68,7 @@ from .const import (
     LIVE_DETAILS,
     LIVE_TITLE_NAME_PROGRAM,
     LIVE_TITLES,
+    MAINTENANCE_ITEMS,
     NAME_PLACEHOLDER,
     PROGRAM_PLACEHOLDER,
     START_TIME_PLACEHOLDER,
@@ -85,6 +88,7 @@ STEP_SETTINGS = "settings"
 SECTION_START = "start"
 SECTION_END = "end"
 SECTION_NOTIFY = "notify"
+SECTION_MAINTENANCE = "maintenance_items"
 
 # a switch or a choice left as it comes isn't a setting either
 DEFAULT_CHOICES: dict[str, bool | str] = {
@@ -111,11 +115,20 @@ def discovery_schema(auto_discover: bool = True) -> vol.Schema:
     return vol.Schema({vol.Required(CONF_AUTO_DISCOVER, default=auto_discover): BooleanSelector()})
 
 
-async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: bool | None = None) -> vol.Schema:
+async def settings_schema(
+    hass: HomeAssistant,
+    progress: bool = True,
+    phase: bool | None = None,
+    maintenance: dict[str, int] | None = None,
+) -> vol.Schema:
+    """The settings of an appliance, with maintenance for one with something to maintain, and the cycles between each
+    of the items for its type, as `maintenance` has them"""
     fields: dict[vol.Marker, Any] = {
         vol.Required(CONF_NOTIFY_START, default=False): BooleanSelector(),
         vol.Required(CONF_NOTIFY_END, default=True): BooleanSelector(),
     }
+    if maintenance is not None:
+        fields[vol.Required(CONF_MAINTENANCE, default=False)] = BooleanSelector()
     if phase is not None:
         # only for an appliance with phases, and on or off to begin with by how much they matter for its type
         fields[vol.Required(CONF_NOTIFY_PHASE, default=phase)] = BooleanSelector()
@@ -164,9 +177,21 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
         SECTION_END: end,
         SECTION_NOTIFY: notify,
     }
+    if maintenance:
+        # 0 for an item not to be tracked
+        sections[SECTION_MAINTENANCE] = {
+            vol.Required(f"{CONF_MAINTENANCE_PREFIX}{key}", default=every): NumberSelector(
+                NumberSelectorConfig(min=0, max=1000, step=1, mode=NumberSelectorMode.BOX)
+            )
+            for key, every in maintenance.items()
+        }
     # all tuning, so out of the way until it's wanted
+    # the maintenance items as they come unless changed, so the section needn't be sent
     fields.update({
-        vol.Required(name): section(vol.Schema(contents), {"collapsed": True}) for name, contents in sections.items()
+        (vol.Optional if name == SECTION_MAINTENANCE else vol.Required)(name): section(
+            vol.Schema(contents), {"collapsed": True}
+        )
+        for name, contents in sections.items()
     })
     return vol.Schema(fields)
 
@@ -315,6 +340,19 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
     def _phase_default(self) -> bool | None:
         return getattr(getattr(self.config_entry, "runtime_data", None), "phase_default", None)
 
+    def _maintenance(self) -> dict[str, int] | None:
+        """The items for the type of appliance, with their usual cycles apart, or None for an appliance with nothing
+        to maintain, whose settings have no maintenance"""
+        watcher = getattr(self.config_entry, "runtime_data", None)
+        if watcher is None:
+            # not running, so with nothing known of it to go by
+            return None
+        usual = dict(MAINTENANCE_ITEMS.get(watcher.appliance_type or "", {}))
+        # by the type, so taking every item out still leaves them there to put back
+        if usual or watcher.maintenance_items or self.config_entry.options.get(CONF_MAINTENANCE) is not None:
+            return usual
+        return None
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if self.config_entry.data.get(CONF_TYPE) == TYPE_DISCOVERY:
             return await self.async_step_discovery()
@@ -334,16 +372,28 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
         defaults = {key: text.replace(NAME_PLACEHOLDER, name) for key, text in DEFAULT_TEXTS.items()}
         if user_input is not None:
             # text left as the default isn't a setting, so it goes on following the name of the appliance
+            usual = {f"{CONF_MAINTENANCE_PREFIX}{key}": every for key, every in (self._maintenance() or {}).items()}
             unset = (
                 defaults
                 | DEFAULT_CHOICES
+                | usual
                 | {CONF_NOTIFY_PHASE: self._phase_default(), CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS}
             )
+            # maintenance left off is only turned down once it had been on, so it's still offered to anyone who
+            # hasn't been asked
+            if self.config_entry.options.get(CONF_MAINTENANCE) is None:
+                unset[CONF_MAINTENANCE] = False
             settings = {
                 key: value
                 for key, value in flattened(user_input).items()
-                if (value or value is False) and value != unset.get(key)
+                # an item at 0 is one left out, not one left as it comes
+                if (value or value is False or (key in usual and value == 0)) and value != unset.get(key)
             }
+            if self._maintenance() is None:
+                # not on the form, so kept as it was
+                settings = {
+                    key: value for key, value in self.config_entry.options.items() if key.startswith(CONF_MAINTENANCE)
+                } | settings
             if self.config_entry.data.get(CONF_TYPE) == TYPE_POWER:
                 self._settings = settings
                 return await self.async_step_power()
@@ -353,6 +403,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             self.hass,
             progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
             phase=self._phase_default(),
+            maintenance=self._maintenance(),
         )
         shown = dict(self.config_entry.options)
         if shown.get(CONF_DASHBOARD) not in dashboards(self.hass):
