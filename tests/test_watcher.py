@@ -645,7 +645,7 @@ async def test_dashboard_named_for_the_appliance_is_chosen_when_set_up(hass: Hom
 
 
 async def test_dashboard_named_for_the_type_is_chosen_when_set_up(hass: HomeAssistant) -> None:
-    appliance = add_appliance(hass, name="Bosch Serie 6", programs=DISHWASHER_PROGRAMS)
+    appliance = add_appliance(hass, name="Bosch SMV6", programs=DISHWASHER_PROGRAMS)
     mock_dashboards(hass)
     mock_dashboard(hass, "dashboard-dishes", "Dishwasher")
     mock_dashboard(hass, "dashboard-laundry", "Washing Machine")
