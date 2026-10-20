@@ -148,6 +148,9 @@ class ApplianceWatcher:
         self.program_in_title: bool = entry.options.get(CONF_PROGRAM_IN_TITLE, True)
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
+        # the program of the cycle just over, kept for its reminders, since an appliance may by then have gone back
+        # to the program it starts on, as a Samsung dryer does
+        self.program_kept: bool = False
         # whether phases are notified unless chosen otherwise, None for an appliance that reports none
         self.phase_default: bool | None = None
         self.notify_phase: bool = False
@@ -214,6 +217,7 @@ class ApplianceWatcher:
             await self._tell(message, ordinary, event.context, resend=True)
 
     async def _started(self, context: Context) -> None:
+        self.program_kept = False
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
         async with self._sending:
@@ -254,6 +258,8 @@ class ApplianceWatcher:
             )
 
     async def _ended(self, finished: bool, context: Context) -> None:
+        self.last_program = self._program() or self.last_program
+        self.program_kept = True
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
         notify = finished and self.notify_end
@@ -348,7 +354,8 @@ class ApplianceWatcher:
         text = str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
         if PROGRAM_PLACEHOLDER not in text:
             return text
-        self.last_program = self._program() or self.last_program
+        if not self.program_kept:
+            self.last_program = self._program() or self.last_program
         # closing up the gap left where there's no program to name
         return " ".join(text.replace(PROGRAM_PLACEHOLDER, self.last_program).split(" ")).strip()
 

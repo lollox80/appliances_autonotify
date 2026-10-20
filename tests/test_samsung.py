@@ -349,3 +349,19 @@ async def test_start_over_before_it_was_told(hass: HomeAssistant) -> None:
         await asyncio.sleep(0.3)
         await hass.async_block_till_done()
     assert calls == []
+
+
+async def test_reminder_names_the_program_of_the_cycle_over(hass: HomeAssistant) -> None:
+    """A Samsung dryer goes back to the program it starts on once a cycle is over, which isn't the one to remind of"""
+    dryer = localthings_dryer(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(dryer["machine_state"], "idle")
+    hass.states.async_set(dryer["dryer_cycle_table_03"], "24")
+    await setup_appliance(hass, dryer["device_id"], end_message="{program}", reminder=1)
+
+    await set_state(hass, dryer["machine_state"], "active")
+    await set_state(hass, dryer["progress"], "finish")
+    assert calls[-1].data["message"] == "24"
+    await set_state(hass, dryer["dryer_cycle_table_03"], "16")
+    await pass_time(hass, 60)
+    assert calls[-1].data["message"] == "24"
