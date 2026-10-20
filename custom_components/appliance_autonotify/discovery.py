@@ -145,6 +145,8 @@ def find_appliances(hass: HomeAssistant) -> list[Appliance]:
         if (device := device_registry.async_get(device_id)) is not None:
             found.append(Appliance(device_id, device.name_by_user or device.name or cycle.entity_id))
     return found
+
+
 def find_appliances(hass: HomeAssistant) -> list[Appliance]:
     """Devices of the known platforms that have a cycle state entity, and robot vacuums of any make"""
     entity_registry = er.async_get(hass)
