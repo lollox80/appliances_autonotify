@@ -22,7 +22,8 @@ or [LocalThings](https://github.com/mbillow/localthings), in English only. Any o
 ## What You Need
 
 - Home Assistant 2026.7 or later
-- An appliance set up with the Home Connect, SmartThings or LocalThings integration, or one with a power sensor
+- An appliance set up with the Home Connect, SmartThings or LocalThings integration, a robot vacuum of any make, or
+  one with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
   beyond a plain notification.
   - `v2.14.0` recommended as minimum, though most features will work with earlier releases

@@ -3,6 +3,10 @@ title: What's New
 ---
 # 0.10.0
 ## ✨ Enhancements
+- **Robot Vacuums** supported, for any manufacturer with a consistent Home Assistant vacuum integration. Tested with Ecovacs and Roborock.
+- Support **Samsung** washers, dryers and dishwashers, through **SmartThings** or **LocalThings**
+ - SmartThings and LocalThings each make a device for the same appliance, both carrying Samsung's id in their identifiers. Devices with an identifier value in common, both with a cycle, are one appliance with the local version picked over the cloud one where available
+
 - *Live Activity title* choice in the settings of each appliance, in place of the *Program in title* switch: *Appliance name and program*, the default, *Program only* or *Appliance name only*. An appliance with *Program in title* switched off is now *Appliance name only*
 - *Live Activity shows* choice of *Time remaining*, the default, or *Program* in its place, for appliances whose program says more than the time left, such as one that reports each phase of the cycle as a program of its own
 

@@ -276,7 +276,7 @@ class ApplianceWatcher:
 
     def _live_title(self, title: str, message: str, timer: bool) -> tuple[str, str]:
         """The title of a quiet Live Activity update as chosen, and its message, which needn't say the program again"""
-        phase = self._phase()
+        phase = self._title_phase()
         # with no timer the message is seen, and says what it's doing itself
         if not timer or self.live_title == LIVE_TITLE_NAME or not phase or phase in title:
             return title, message

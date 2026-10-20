@@ -130,8 +130,9 @@ VACUUM_BLIP: Final[float] = 5
 VACUUM_BLIP_KIND: Final[str] = "blip"
 # how long such a report is left before the cleaning is taken to be over, with nothing else heard from the vacuum
 VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
-# translation key, per vendor platform, of the entity whose state follows the appliance cycle
-CYCLE_KEYS: Final[dict[str, str]] = {"home_connect": "operation_state"}
+# what each entity made use of does, by its translation key as Home Connect has it: the state of the cycle, how far
+# along it is, when it will finish, and the program
+CYCLE_KEY: Final[str] = "operation_state"
 PROGRESS_KEY: Final[str] = "program_progress"
 FINISH_TIME_KEY: Final[str] = "program_finish_time"
 # selects, unlike the others, of the program under way, and of the one chosen, which is all an oven reports
