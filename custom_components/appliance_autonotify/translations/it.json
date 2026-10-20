@@ -65,7 +65,8 @@
                     "notify_phase": "Notifica le fasi",
                     "notify_progress": "Notifica l'avanzamento",
                     "dashboard": "Dashboard da aprire",
-                    "program_in_title": "Programma nel titolo"
+                    "live_title": "Titolo della Live Activity",
+                    "live_detail": "La Live Activity mostra"
                 },
                 "data_description": {
                     "notify_start": "Invia una notifica quando l'elettrodomestico parte. Se disattivato, la Live Activity viene comunque aperta, senza suono e solo sui telefoni.",
@@ -73,7 +74,8 @@
                     "notify_phase": "Invia una notifica quando finisce una fase del ciclo, ad esempio quando il forno è arrivato in temperatura. Se disattivato, viene mostrata solo sulla Live Activity.",
                     "dashboard": "Aperta quando si tocca una notifica o la Live Activity. Lascia vuoto per aprire l'app dove si trovava.",
                     "notify_progress": "Invia una notifica ogni 10% del ciclo. Se disattivato, l'avanzamento compare solo nella barra della Live Activity, aggiornata senza suono.",
-                    "program_in_title": "Mostra il programma accanto al nome nella Live Activity, ad esempio \"Lavastoviglie · Eco 50ºC\", quando c'è un tempo residuo da mostrare, che nella schermata di blocco dell'iPhone prende il posto del messaggio. Disattiva se i nomi dei programmi sono troppo lunghi."
+                    "live_title": "Il titolo della Live Activity. Il programma accanto al nome è utile quando il tempo residuo prende il posto del messaggio, come nella schermata di blocco dell'iPhone. Scegli solo il nome se i nomi dei programmi sono troppo lunghi, o se l'elettrodomestico usa sempre lo stesso programma.",
+                    "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure il programma al suo posto. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio."
                 },
                 "sections": {
                     "start": {
@@ -152,6 +154,19 @@
                 "coffee_maker": "caffè, caffe",
                 "cleaning_robot": "aspirapolvere",
                 "kettle": "bollitore"
+            }
+        },
+        "live_title": {
+            "options": {
+                "name_program": "Nome dell'elettrodomestico e programma",
+                "program": "Solo il programma",
+                "name": "Solo il nome dell'elettrodomestico"
+            }
+        },
+        "live_detail": {
+            "options": {
+                "time_remaining": "Tempo residuo",
+                "program": "Programma"
             }
         }
     }

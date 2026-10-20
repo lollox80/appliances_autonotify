@@ -39,13 +39,14 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_LIVE_DETAIL,
+    CONF_LIVE_TITLE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
-    CONF_PROGRAM_IN_TITLE,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
@@ -70,8 +71,13 @@ from .const import (
     FAST_PREHEAT_KEY,
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
+    LIVE_DETAIL_PROGRAM,
+    LIVE_DETAIL_TIME,
     LIVE_SETTLE,
     LIVE_TITLE,
+    LIVE_TITLE_NAME,
+    LIVE_TITLE_NAME_PROGRAM,
+    LIVE_TITLE_PROGRAM,
     MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
     MOBILE_PUSH_TRANSPORT,
@@ -137,7 +143,8 @@ class ApplianceWatcher:
         self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
-        self.program_in_title: bool = entry.options.get(CONF_PROGRAM_IN_TITLE, True)
+        self.live_title: str = entry.options.get(CONF_LIVE_TITLE, LIVE_TITLE_NAME_PROGRAM)
+        self.live_detail: str = entry.options.get(CONF_LIVE_DETAIL, LIVE_DETAIL_TIME)
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
         # whether phases are notified unless chosen otherwise, None for an appliance that reports none
@@ -229,11 +236,7 @@ class ApplianceWatcher:
             )
         else:
             data = self._live_data()
-            if self.program_in_title and "when" in data and (phase := self._phase()) and phase not in title:
-                # with a timer there's no message on the iOS Lock Screen, so what it's doing goes beside the name
-                title = LIVE_TITLE.format(title=title, phase=phase)
-                if message == phase and (progress := self._progress()) is not None:
-                    message = self._progress_message(progress)
+            title, message = self._live_title(title, message, timer="when" in data)
             # with nothing to hear, and nothing sent anywhere but to phones
             await self._supernotify(
                 message,
@@ -244,6 +247,19 @@ class ApplianceWatcher:
                 # iOS forgets where a tap goes unless told again on every update
                 actions=self._tap_actions(),
             )
+
+    def _live_title(self, title: str, message: str, timer: bool) -> tuple[str, str]:
+        """The title of a quiet Live Activity update as chosen, and its message, which needn't say the program again"""
+        phase = self._phase()
+        # with no timer the message is seen, and says what it's doing itself
+        if not timer or self.live_title == LIVE_TITLE_NAME or not phase or phase in title:
+            return title, message
+        # with a timer there's no message on the iOS Lock Screen, so what it's doing goes in the title
+        if message == phase and (progress := self._progress()) is not None:
+            message = self._progress_message(progress)
+        if self.live_title == LIVE_TITLE_PROGRAM:
+            return phase, message
+        return LIVE_TITLE.format(title=title, phase=phase), message
 
     async def _ended(self, finished: bool, context: Context) -> None:
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
@@ -406,7 +422,7 @@ class ApplianceWatcher:
             data["progress_max"] = 100
         state = self._state(FINISH_TIME_KEY)
         finish_time = dt_util.parse_datetime(state.state) if state is not None else None
-        if finish_time is not None:
+        if finish_time is not None and self.live_detail != LIVE_DETAIL_PROGRAM:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
         elif progress is not None:

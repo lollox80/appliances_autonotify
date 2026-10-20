@@ -240,7 +240,9 @@ async def test_program_is_kept_out_of_the_title_when_switched_off(hass: HomeAssi
     calls = mock_supernotify(hass)
     hass.states.async_set(appliance.program, "Eco")
     hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
-    await setup_watcher(hass, appliance, {"program_in_title": False})
+    # as saved before the title was a choice, and taken as the name alone
+    entry = await setup_watcher(hass, appliance, {"program_in_title": False})
+    assert (entry.minor_version, dict(entry.options)) == (2, {"live_title": "name"})
 
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.progress, "5")
@@ -248,6 +250,38 @@ async def test_program_is_kept_out_of_the_title_when_switched_off(hass: HomeAssi
         ("Dishwasher", "Dishwasher started"),
         ("Dishwasher", "Eco"),
     ]
+
+
+async def test_title_can_be_the_program_alone(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(appliance.program, "Eco")
+    hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
+    await setup_watcher(hass, appliance, {"live_title": "program"})
+
+    await set_state(hass, appliance.cycle, "run")
+    await set_state(hass, appliance.progress, "5")
+    assert [(call.data["title"], call.data["message"]) for call in calls] == [
+        ("Eco", "Dishwasher started"),
+        ("Eco", "5% complete"),
+    ]
+
+
+async def test_program_can_be_shown_in_place_of_the_time_left(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(appliance.program, "Eco")
+    hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
+    await setup_watcher(hass, appliance, {"live_title": "name", "live_detail": "program"})
+
+    await set_state(hass, appliance.cycle, "run")
+    await set_state(hass, appliance.progress, "5")
+    assert (calls[-1].data["title"], calls[-1].data["message"]) == ("Dishwasher", "Eco")
+    extra = calls[-1].data["extra_data"]
+    assert "when" not in extra
+    assert "chronometer" not in extra
+    # the Android chip has the percentage, with no time left to show
+    assert extra["critical_text"] == "5%"
 
 
 async def test_program_can_be_named_in_the_messages(hass: HomeAssistant) -> None:

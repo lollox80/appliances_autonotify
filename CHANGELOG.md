@@ -1,6 +1,11 @@
 ---
 title: What's New
 ---
+# 0.10.0
+## ✨ Enhancements
+- *Live Activity title* choice in the settings of each appliance, in place of the *Program in title* switch: *Appliance name and program*, the default, *Program only* or *Appliance name only*. An appliance with *Program in title* switched off is now *Appliance name only*
+- *Live Activity shows* choice of *Time remaining*, the default, or *Program* in its place, for appliances whose program says more than the time left, such as one that reports each phase of the cycle as a program of its own
+
 # 0.9.0
 ## ✨ Enhancements
 - Power monitors automatically detected and icons assigned for common usage, for example if its a 'Washing Machine Plug'

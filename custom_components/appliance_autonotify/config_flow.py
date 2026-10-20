@@ -33,13 +33,14 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_LIVE_DETAIL,
+    CONF_LIVE_TITLE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
-    CONF_PROGRAM_IN_TITLE,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
@@ -58,6 +59,10 @@ from .const import (
     DEFAULT_TITLE,
     DISCOVERY_TITLE,
     DOMAIN,
+    LIVE_DETAIL_TIME,
+    LIVE_DETAILS,
+    LIVE_TITLE_NAME_PROGRAM,
+    LIVE_TITLES,
     NAME_PLACEHOLDER,
     PROGRAM_PLACEHOLDER,
     SUPERNOTIFY_MISSING,
@@ -76,12 +81,13 @@ SECTION_START = "start"
 SECTION_END = "end"
 SECTION_NOTIFY = "notify"
 
-# a switch left as it comes isn't a setting either
-DEFAULT_SWITCHES: dict[str, bool] = {
+# a switch or a choice left as it comes isn't a setting either
+DEFAULT_CHOICES: dict[str, bool | str] = {
     CONF_NOTIFY_START: False,
     CONF_NOTIFY_END: True,
     CONF_NOTIFY_PROGRESS: False,
-    CONF_PROGRAM_IN_TITLE: True,
+    CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM,
+    CONF_LIVE_DETAIL: LIVE_DETAIL_TIME,
 }
 
 DEFAULT_TEXTS: dict[str, str] = {
@@ -111,8 +117,14 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
     if progress:
         fields[vol.Required(CONF_NOTIFY_PROGRESS, default=False)] = BooleanSelector()
         if supernotify_available(hass):
-            # only a Live Activity has a title that changes as the cycle goes on
-            fields[vol.Required(CONF_PROGRAM_IN_TITLE, default=True)] = BooleanSelector()
+            # only a Live Activity has a title that changes as the cycle goes on, and a timer
+            for key, options, default in (
+                (CONF_LIVE_TITLE, LIVE_TITLES, LIVE_TITLE_NAME_PROGRAM),
+                (CONF_LIVE_DETAIL, LIVE_DETAILS, LIVE_DETAIL_TIME),
+            ):
+                fields[vol.Required(key, default=default)] = SelectSelector(
+                    SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
+                )
     notify: dict[vol.Marker, Any] = {}
     end: dict[vol.Marker, Any] = {
         vol.Optional(CONF_END_TITLE): TextSelector(),
@@ -194,6 +206,8 @@ def power_schema(with_name: bool) -> vol.Schema:
 
 class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+    # 2 has the choice of what the title of a Live Activity names in place of the switch for the program in it
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         self._device_id: str | None = None
@@ -312,7 +326,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             # text left as the default isn't a setting, so it goes on following the name of the appliance
             unset = (
                 defaults
-                | DEFAULT_SWITCHES
+                | DEFAULT_CHOICES
                 | {CONF_NOTIFY_PHASE: self._phase_default(), CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS}
             )
             settings = {

@@ -22,7 +22,20 @@ CONF_NOTIFY_START: Final[str] = "notify_start"
 CONF_NOTIFY_END: Final[str] = "notify_end"
 # whether the end of a phase, such as an oven getting up to heat, is told with an ordinary notification
 CONF_NOTIFY_PHASE: Final[str] = "notify_phase"
-# whether the program goes beside the name in the title of a Live Activity with a timer, for those short enough to fit
+# what the title of a Live Activity names, the program going beside the name unless chosen otherwise, since it's
+# where the program shows on the iOS Lock Screen once a timer has taken the message's place
+CONF_LIVE_TITLE: Final[str] = "live_title"
+LIVE_TITLE_NAME_PROGRAM: Final[str] = "name_program"
+LIVE_TITLE_PROGRAM: Final[str] = "program"
+LIVE_TITLE_NAME: Final[str] = "name"
+LIVE_TITLES: Final[tuple[str, ...]] = (LIVE_TITLE_NAME_PROGRAM, LIVE_TITLE_PROGRAM, LIVE_TITLE_NAME)
+# what a Live Activity shows in place of its message, the time left where the appliance reports a finish time, or
+# the program, for an appliance whose program is always the same and so not worth the title
+CONF_LIVE_DETAIL: Final[str] = "live_detail"
+LIVE_DETAIL_TIME: Final[str] = "time_remaining"
+LIVE_DETAIL_PROGRAM: Final[str] = "program"
+LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM)
+# the switch the title choice took over from, off being the name only
 CONF_PROGRAM_IN_TITLE: Final[str] = "program_in_title"
 # path of the dashboard opened by a tap on a notification, the app is opened where it was last if there's none
 CONF_DASHBOARD: Final[str] = "dashboard"
