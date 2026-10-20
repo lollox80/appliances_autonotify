@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 from homeassistant.const import CONF_TYPE
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN, TYPE_DISCOVERY, TYPE_POWER
+from .const import DOMAIN, TYPE_DISCOVERY, TYPE_POWER, TYPE_VACUUM
 from .discovery import async_discover, async_start_discovery
-from .watcher import ApplianceWatcher, HomeConnectWatcher, PowerWatcher
+from .watcher import ApplianceWatcher, HomeConnectWatcher, PowerWatcher, VacuumWatcher
 from .words import async_load_words
 
 if TYPE_CHECKING:
@@ -33,8 +33,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -
         # nothing to watch, only to look again now that automatic discovery may have been switched
         async_discover(hass)
         return True
-    watcher_class = PowerWatcher if entry.data.get(CONF_TYPE) == TYPE_POWER else HomeConnectWatcher
-    watcher: ApplianceWatcher = watcher_class(hass, entry)
+    watchers: dict[str | None, type[ApplianceWatcher]] = {TYPE_POWER: PowerWatcher, TYPE_VACUUM: VacuumWatcher}
+    watcher = watchers.get(entry.data.get(CONF_TYPE), HomeConnectWatcher)(hass, entry)
     watcher.async_start()
     watcher.async_listen_for_actions()
     entry.runtime_data = watcher
