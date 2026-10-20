@@ -108,6 +108,7 @@ from .const import (
     STAGE_KEY,
     STAGES_FINISHED,
     STAGES_NONE,
+    START_SETTLE,
     START_TIME_PLACEHOLDER,
     STATES_ABANDONED,
     STATES_ACTIVE,
@@ -701,6 +702,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         self._cancel_preheated: CALLBACK_TYPE | None = None
         # over by its stage while its cycle state still says it's running, so not a new cycle till that says it's over
         self.over_by_stage: bool = False
+        # started, and waiting a moment for the program and stage to be reported before that's told
+        self.starting: bool = False
 
     @callback
     def async_start(self) -> None:
@@ -960,6 +963,18 @@ class HomeConnectWatcher(ApplianceWatcher):
                 if self.shown_paused:
                     # going again, so counting down again
                     await self._live_refresh(context)
+                return
+            if self.starting:
+                return
+            # a moment for the program and stage, which may come just after, to be what's told
+            self.starting = True
+            try:
+                await asyncio.sleep(START_SETTLE)
+            finally:
+                self.starting = False
+            cycle = self._cycle_state()
+            if self.running or cycle is None or cycle.state not in STATES_ACTIVE:
+                # over, or started by another report, while it waited
                 return
             self.running = True
             # unless it's hot already, from not long having been off

@@ -630,8 +630,8 @@ async def test_first_progress_waits_for_the_live_activity_to_open(hass: HomeAssi
     # as Home Connect tells it, the progress coming moments after the cycle starts
     with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0.2):
         hass.states.async_set(appliance.cycle, "run")
-        # a turn of the loop between, else HA before 2026.10 has both states set before telling of either
-        await asyncio.sleep(0)
+        # a moment between, else HA before 2026.10 has both states set before telling of either
+        await asyncio.sleep(0.01)
         hass.states.async_set(appliance.progress, "0")
         await asyncio.sleep(0.05)
         assert [call.data["message"] for call in calls] == ["Dishwasher started"]
