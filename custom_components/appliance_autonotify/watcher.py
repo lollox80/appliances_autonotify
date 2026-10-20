@@ -192,6 +192,9 @@ class ApplianceWatcher:
         self.program_in_title: bool = entry.options.get(CONF_PROGRAM_IN_TITLE, True)
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
+        # the program of the cycle just over, kept for its reminders, since an appliance may by then have gone back
+        # to the program it starts on, as a Samsung dryer does
+        self.program_kept: bool = False
         # whether phases are notified unless chosen otherwise, None for an appliance that reports none
         self.phase_default: bool | None = None
         self.notify_phase: bool = False
@@ -308,6 +311,7 @@ class ApplianceWatcher:
             await self._tell(message, ordinary, event.context, resend=True)
 
     async def _started(self, context: Context) -> None:
+        self.program_kept = False
         self._cycle_began()
         # nothing yet to tell of this one
         self.totals = CycleTotals()
@@ -365,6 +369,8 @@ class ApplianceWatcher:
             )
 
     async def _ended(self, finished: bool, context: Context) -> None:
+        self.last_program = self._program() or self.last_program
+        self.program_kept = True
         await self._sum_up()
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
@@ -477,12 +483,22 @@ class ApplianceWatcher:
             (COST_PLACEHOLDER, totals.cost, format_cost, speak_cost),
         ):
             if placeholder in text:
-                values[placeholder] = "" if amount is None else (said if speak else written)(self.hass, amount)
+                # nothing to say of less than a meter can count, rather than none used, or nothing to pay
+                counted = amount is not None and round(amount, 2) > 0
+                values[placeholder] = (said if speak else written)(self.hass, amount or 0) if counted else ""
         if PROGRAM_PLACEHOLDER in text:
-            self.last_program = self._program() or self.last_program
+            if not self.program_kept:
+                self.last_program = self._program() or self.last_program
             values[PROGRAM_PLACEHOLDER] = self.last_program
+        lines = text.split("\n")
         for placeholder, value in values.items():
-            text = text.replace(placeholder, value)
+            lines = [line.replace(placeholder, value) for line in lines]
+        # a line of nothing but a placeholder left empty and its emoji goes, rather than the emoji alone
+        text = "\n".join(
+            line
+            for line, before in zip(lines, text.split("\n"), strict=True)
+            if any(c.isalnum() for c in line) or not any(p in before for p in values)
+        )
         if speak:
             # the title said first, unless the message already names it
             return spoken(f"{title}\n{text}" if title and title not in text else text)

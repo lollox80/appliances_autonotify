@@ -269,3 +269,17 @@ async def test_energy_meter_rather_than_what_was_used_since_the_last_reading(has
         hass.states.async_set(entity.entity_id, "1", attributes | ({"state_class": state_class} if state_class else {}))
     assert energy_entity_id(hass, device.id) == "sensor.dryer_energy"
     assert energy_entity_id(hass, None) is None
+
+
+async def test_nothing_counted_leaves_its_line_out(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """A real cold air cycle on a meter that counts in tenths of a kWh, which hadn't moved by the end"""
+    device_id, vacuum = add_vacuum(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id, end_message="Done\n⏱ {duration}\n⚡ {energy}\n💰 {cost}")
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1200)
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert calls[-1].data["message"] == "Done\n⏱ 20 min"
