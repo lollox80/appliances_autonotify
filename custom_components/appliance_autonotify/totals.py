@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor import ATTR_STATE_CLASS, SensorDeviceClass
 from homeassistant.const import ATTR_DEVICE_CLASS, ATTR_UNIT_OF_MEASUREMENT, STATE_UNAVAILABLE, STATE_UNKNOWN, UnitOfEnergy
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 ENERGY_DOMAIN = "energy"
+# state classes of a meter that only goes up, best first
+METER_STATE_CLASSES: tuple[str, ...] = ("total_increasing", "total")
 # symbols of the commonest currencies, any other being shown by its code
 CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF", "JPY": "¥"}
 
@@ -138,18 +140,24 @@ def spoken(text: str) -> str:
 
 
 def energy_entity_id(hass: HomeAssistant, device_id: str | None) -> str | None:
-    """The sensor of the device that adds up the energy it uses, such as a smart plug's, where it has one"""
+    """The sensor of the device that adds up the energy it uses, such as a smart plug's, where it has one, rather than
+    one of the energy used since the last reading or saved, which some appliances have as well"""
     if device_id is None:
         return None
+    found: list[tuple[int, str]] = []
     for entry in er.async_entries_for_device(er.async_get(hass), device_id):
-        if entry.domain != "sensor":
+        if entry.domain != "sensor" or entry.disabled:
             continue
         state = hass.states.get(entry.entity_id)
         device_class = (state.attributes.get(ATTR_DEVICE_CLASS) if state else None) or entry.device_class
         device_class = device_class or entry.original_device_class
-        if device_class == SensorDeviceClass.ENERGY:
-            return entry.entity_id
-    return None
+        if device_class != SensorDeviceClass.ENERGY:
+            continue
+        state_class = (state.attributes.get(ATTR_STATE_CLASS) if state else None) or (entry.capabilities or {}).get(
+            ATTR_STATE_CLASS
+        )
+        found.append((METER_STATE_CLASSES.index(state_class) if state_class in METER_STATE_CLASSES else 2, entry.entity_id))
+    return min(found)[1] if found else None
 
 
 def energy_reading(hass: HomeAssistant, entity_id: str | None) -> float | None:

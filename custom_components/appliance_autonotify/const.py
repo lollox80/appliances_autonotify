@@ -163,14 +163,24 @@ VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
 # along it is, when it will finish, and the program
 CYCLE_KEY: Final[str] = "operation_state"
 PROGRESS_KEY: Final[str] = "program_progress"
+# the time left, which where an appliance reports it is fresher than its finish time, and is how that's worked out
+REMAINING_KEY: Final[str] = "remaining_time"
 FINISH_TIME_KEY: Final[str] = "program_finish_time"
 # selects, unlike the others, of the program under way, and of the one chosen, which is all an oven reports
-PROGRAM_KEYS: Final[tuple[str, ...]] = ("active_program", "selected_program")
-# what the appliance is doing within its cycle, such as drying then cooling, which Home Connect doesn't report
+SELECTED_PROGRAM_KEYS: Final[tuple[str, ...]] = ("active_program", "selected_program")
+# the name of the print under way, which is to a 3D printer what the program is to an appliance
+TASK_KEY: Final[str] = "subtask_name"
+PROGRAM_KEYS: Final[tuple[str, ...]] = (*SELECTED_PROGRAM_KEYS, TASK_KEY)
+# what the appliance is doing within its cycle, such as drying then cooling, or a 3D printer heating its bed then
+# printing, which Home Connect doesn't report
 STAGE_KEY: Final[str] = "stage"
 # the same entities as other integrations name them, whichever integration they come from, since it's what an
 # entity does that matters, and which entities an appliance has together
 ROLE_KEYS: Final[dict[str, str]] = {
+    # Bambu Lab 3D printers
+    "print_status": CYCLE_KEY,
+    "print_progress": PROGRESS_KEY,
+    "end_time": FINISH_TIME_KEY,
     # Samsung washers, dryers and dishwashers, through SmartThings
     **{f"{kind}_machine_state": CYCLE_KEY for kind in ("washer", "dryer", "dishwasher")},
     **{f"{kind}_job_state": STAGE_KEY for kind in ("washer", "dryer", "dishwasher")},
@@ -196,12 +206,16 @@ ENTITY_DOMAINS: Final[dict[str, str]] = {
     PROGRESS_KEY: "sensor",
     STAGE_KEY: "sensor",
     FINISH_TIME_KEY: "sensor",
-    **dict.fromkeys(PROGRAM_KEYS, "select"),
+    REMAINING_KEY: "sensor",
+    **dict.fromkeys(SELECTED_PROGRAM_KEYS, "select"),
+    TASK_KEY: "sensor",
     TARGET_TEMPERATURE_KEY: "number",
     CAVITY_TEMPERATURE_KEY: "sensor",
     **dict.fromkeys(PREHEAT_FINISHED_KEYS, "sensor"),
     FAST_PREHEAT_KEY: "switch",
 }
+# the type of appliance of a platform that has only the one
+PLATFORM_TYPES: Final[dict[str, str]] = {"bambu_lab": "3d_printer"}
 # degrees between Live Activity updates of an oven up to heat, whose temperature never stops wandering
 TEMPERATURE_STEP: Final[float] = 5
 # seconds before an oven saying it's up to heat is believed, since one switched off says so too, just before it's off
@@ -209,19 +223,26 @@ PREHEAT_SETTLE: Final[float] = 3
 # an event sensor is `off` until whatever it tells of has happened
 STATES_EVENT_ON: Final[tuple[str, ...]] = ("present", "confirmed", "on")
 
-# the states of a cycle, with the words different integrations use for the same thing
-STATES_RUN: Final[tuple[str, ...]] = ("run", "active")
+# the states of a cycle, with the words different integrations use for the same thing, a 3D printer first heating
+# up and levelling its bed as it gets ready to print
+STATES_RUN: Final[tuple[str, ...]] = ("run", "active", "prepare", "running")
 # a cycle already under way, so not a new start when `run` follows
 STATES_ACTIVE: Final[tuple[str, ...]] = (*STATES_RUN, "pause", "actionrequired")
 # the cycle is over, an oven switched off goes straight from `run` to `inactive` without ever being `finished`
-STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "stop")
-# over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed
+STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "stop", "finish")
+# over too unless `run` soon follows, an oven being `ready` for a moment as it starts or has its settings changed,
+# and a 3D printer `idle` with no word of how its print ended
 STATES_SETTLING: Final[tuple[str, ...]] = ("ready", "idle")
 # stages that mean the cycle is over, though the cycle state may stay running a long while after, as a dryer's does
 # while it tumbles its load now and then so it won't crease
 STAGES_FINISHED: Final[tuple[str, ...]] = ("finished", "finish", "wrinkle_prevent")
 # stages that say nothing of what it's doing
 STAGES_NONE: Final[tuple[str, ...]] = ("none", "idle")
+# paused part way through, with the time left standing still
+STATES_PAUSED: Final[tuple[str, ...]] = ("pause",)
+# seconds the finish time can drift from the one on the Live Activity before it's brought up to date, since the time
+# left may be counted only in whole minutes
+FINISH_DRIFT: Final[float] = 120
 # seconds an appliance is left to settle before the cycle is over
 CYCLE_SETTLE: Final[float] = 10
 # seconds after the cycle starts before it's told of, since an integration may report its program and stage a moment
@@ -231,7 +252,7 @@ START_SETTLE: Final[float] = 3
 # start can reach a phone ahead of it, and then be overwritten by the start, with no bar and no program
 LIVE_SETTLE: Final[float] = 5
 # the cycle is over without finishing, so the Live Activity goes without an end notification
-STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting")
+STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting", "failed")
 
 # percentage points between Live Activity updates, since mobile platforms throttle frequent ones
 PROGRESS_STEP: Final[int] = 5
@@ -274,6 +295,7 @@ TYPE_ICONS: Final[dict[str, str]] = {
     "coffee_maker": "mdi:coffee-maker",
     "cleaning_robot": "mdi:robot-vacuum",
     "air_conditioner": "mdi:air-conditioner",
+    "3d_printer": "mdi:printer-3d",
     # types known only from the name
     "microwave": "mdi:microwave",
     "kettle": "mdi:kettle",
