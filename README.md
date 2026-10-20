@@ -59,7 +59,7 @@ heard from, though an end it told meanwhile still counts once the first goes qui
 A robot vacuum of any make, through whichever integration Home Assistant has for it, is found and set up like the other appliances.
 
 Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its dock, or stopped by itself, for 10 minutes after saying it was on its way back. A vacuum that goes straight to its dock from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
-before its cleaning is taken to be over. 
+before its cleaning is taken to be over.
 
 Paused, or on its way back, it's still the same cleaning too, and paused once
 back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
@@ -97,7 +97,7 @@ device to link to if its power sensor has none.
 
 ## Settings
 
-Nothing needs changing for notifications to work. Each appliance on the integration's page has settings: 
+Nothing needs changing for notifications to work. Each appliance on the integration's page has settings:
 
 - *Notify Start* and *Notify End* switches
  - the start off and the end on by default
@@ -109,8 +109,8 @@ Nothing needs changing for notifications to work. Each appliance on the integrat
   - Choose to have the main title be the appliance name and the programme name ("Dishwashed Intensive 70C"), or only the appliance name or programme
   - Choose to have the 2nd line of live activity be the countdown clock or programme name
   - Supernotify required for these options
-- *Dashboard to open* 
-  - when a notification or the Live Activity is tapped. 
+- *Dashboard to open*
+  - when a notification or the Live Activity is tapped.
   - Can be any Home Assistant dashboard, use one for all appliances, or create a dashboard just for that appliance and hide it from the app side panel so it doesn't clutter up the ap
   - Set when the appliance is added to a dashboard named for it, such as "Dishwasher", or for its type, such as "Washing Machine" for a washer, by its title or its path, so long as there's only one that matches. Change it or clear it like any other setting, it isn't set again
 
