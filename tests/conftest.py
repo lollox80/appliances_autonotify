@@ -23,8 +23,11 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(autouse=True)
 def no_live_settle():
-    """Nothing held back after the start, other than in the tests of that"""
-    with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0):
+    """Nothing held back before or after the start, other than in the tests of that"""
+    with (
+        patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0),
+        patch("custom_components.appliance_autonotify.watcher.START_SETTLE", 0),
+    ):
         yield
 
 
@@ -49,6 +52,10 @@ OVEN_ENTITIES = {
     "regular_preheat_finished": "sensor",
     "fast_pre_heat": "switch",
 }
+
+
+# the states Home Connect lists for the state of an appliance's cycle
+OPERATION_STATES = ["inactive", "ready", "delayedstart", "run", "pause", "actionrequired", "finished", "error", "aborting"]
 
 
 def add_appliance(
@@ -80,7 +87,11 @@ def add_appliance(
             device_id=device.id,
             config_entry=source,
             translation_key=key,
-            capabilities={"options": programs} if domain == "select" and programs else None,
+            capabilities={"options": programs}
+            if domain == "select" and programs
+            else {"options": OPERATION_STATES}
+            if key == "operation_state"
+            else None,
         ).entity_id
     return FakeAppliance(
         device.id,

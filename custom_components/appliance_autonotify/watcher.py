@@ -56,7 +56,6 @@ from .const import (
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
-    CYCLE_KEYS,
     CYCLE_SETTLE,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
@@ -71,6 +70,7 @@ from .const import (
     FAST_PREHEAT_KEY,
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
+    KEY_TYPE_PREFIXES,
     LIVE_DETAIL_PROGRAM,
     LIVE_DETAIL_TIME,
     LIVE_SETTLE,
@@ -98,11 +98,15 @@ from .const import (
     PROGRESS_MESSAGE,
     PROGRESS_NOTIFY_STEP,
     PROGRESS_STEP,
-    STATE_RUN,
+    STAGE_KEY,
+    STAGES_FINISHED,
+    STAGES_NONE,
+    START_SETTLE,
     STATES_ABANDONED,
     STATES_ACTIVE,
     STATES_EVENT_ON,
     STATES_FINISHED,
+    STATES_RUN,
     STATES_SETTLING,
     STUCK_MESSAGES,
     SUPERNOTIFY_DOMAIN,
@@ -123,6 +127,7 @@ from .const import (
     VACUUM_SETTLE,
 )
 from .dashboards import dashboard_url
+from .discovery import companions, cycle_entities, is_cycle_entity, role_key
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .words import name_type
 
@@ -154,6 +159,9 @@ class ApplianceWatcher:
         self.cycle_entity_id: str | None = None
         # by translation key, whichever of those made use of the appliance has
         self.entity_ids: dict[str, str] = {}
+        # the same, of the same appliance through another integration, for while the first can't be heard from
+        self.fallback_cycle_entity_id: str | None = None
+        self.fallback_ids: dict[str, str] = {}
         self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
@@ -161,6 +169,9 @@ class ApplianceWatcher:
         self.live_detail: str = entry.options.get(CONF_LIVE_DETAIL, LIVE_DETAIL_TIME)
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
+        # the program of the cycle just over, kept for its reminders, since an appliance may by then have gone back
+        # to the program it starts on, as a Samsung dryer does
+        self.program_kept: bool = False
         # whether phases are notified unless chosen otherwise, None for an appliance that reports none
         self.phase_default: bool | None = None
         self.notify_phase: bool = False
@@ -227,6 +238,7 @@ class ApplianceWatcher:
             await self._tell(message, ordinary, event.context, resend=True)
 
     async def _started(self, context: Context) -> None:
+        self.program_kept = False
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
         async with self._sending:
@@ -276,6 +288,8 @@ class ApplianceWatcher:
         return LIVE_TITLE.format(title=title, phase=phase), message
 
     async def _ended(self, finished: bool, context: Context) -> None:
+        self.last_program = self._program() or self.last_program
+        self.program_kept = True
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
         notify = finished and self.notify_end
@@ -370,15 +384,26 @@ class ApplianceWatcher:
         text = str(self.entry.options.get(key) or default).replace(NAME_PLACEHOLDER, self.name)
         if PROGRAM_PLACEHOLDER not in text:
             return text
-        self.last_program = self._program() or self.last_program
+        if not self.program_kept:
+            self.last_program = self._program() or self.last_program
         # closing up the gap left where there's no program to name
         return " ".join(text.replace(PROGRAM_PLACEHOLDER, self.last_program).split(" ")).strip()
 
     def _state(self, key: str) -> State | None:
-        """The state of one of the appliance's entities, where it has the entity and its state is known"""
-        entity_id = self.entity_ids.get(key)
+        """The state of one of the appliance's entities, where it has the entity and its state is known, or failing
+        that the same entity through another integration"""
+        for ids in (self.entity_ids, self.fallback_ids):
+            if (state := self._known(ids.get(key))) is not None:
+                return state
+        return None
+
+    def _known(self, entity_id: str | None) -> State | None:
         state = self.hass.states.get(entity_id) if entity_id else None
         return None if state is None or state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE) else state
+
+    def _cycle_state(self) -> State | None:
+        """The state of the cycle, from another integration for the same appliance while the first doesn't know it"""
+        return self._known(self.cycle_entity_id) or self._known(self.fallback_cycle_entity_id)
 
     def _number(self, key: str) -> float | None:
         state = self._state(key)
@@ -396,7 +421,17 @@ class ApplianceWatcher:
 
     def _phase(self) -> str | None:
         """What the appliance is doing, to say alongside a bar that already shows how far along it is"""
-        return self._program()
+        return self._stage() or self._program()
+
+    def _stage(self) -> str | None:
+        """What the appliance is doing within its cycle, where its integration tells"""
+        stage = self._state(STAGE_KEY)
+        return self._translated(stage) if stage is not None and stage.state not in STAGES_NONE else None
+
+    def _title_phase(self) -> str | None:
+        """What goes beside the name in the title of a Live Activity with a timer: the program, where the stage is
+        what the Live Activity says, or else whatever the Live Activity would say"""
+        return self._program() if self._stage() is not None else self._phase()
 
     def _program_state(self) -> State | None:
         """The program under way, or failing that the one chosen, where the appliance reports either"""
@@ -405,8 +440,10 @@ class ApplianceWatcher:
     def _program(self) -> str | None:
         """The program as Home Assistant shows it"""
         state = self._program_state()
-        if state is None:
-            return None
+        return self._translated(state) if state is not None else None
+
+    def _translated(self, state: State) -> str:
+        """A state as Home Assistant shows it, in its language"""
         entity = er.async_get(self.hass).async_get(state.entity_id)
         if entity is None:
             return state.state
@@ -518,6 +555,10 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.shown_temperature: float | None = None
         # the oven saying it's up to heat, waiting to see that it wasn't being switched off
         self._cancel_preheated: CALLBACK_TYPE | None = None
+        # over by its stage while its cycle state still says it's running, so not a new cycle till that says it's over
+        self.over_by_stage: bool = False
+        # started, and waiting a moment for the program and stage to be reported before that's told
+        self.starting: bool = False
 
     @callback
     def async_start(self) -> None:
@@ -526,20 +567,36 @@ class HomeConnectWatcher(ApplianceWatcher):
         if device is not None:
             self.name = device.name_by_user or device.name or self.name
         programs: list[str] = []
-        for entity in er.async_entries_for_device(er.async_get(self.hass), device_id):
-            if entity.platform not in CYCLE_KEYS or entity.translation_key is None:
+        translation_keys: list[str] = []
+        entity_registry = er.async_get(self.hass)
+        for entity in er.async_entries_for_device(entity_registry, device_id):
+            key = role_key(entity)
+            if key is None or entity.disabled:
                 continue
-            if entity.translation_key == CYCLE_KEYS[entity.platform]:
+            translation_keys.append(entity.translation_key or "")
+            if is_cycle_entity(entity):
                 self.cycle_entity_id = entity.entity_id
-            elif ENTITY_DOMAINS.get(entity.translation_key) == entity.domain:
-                self.entity_ids[entity.translation_key] = entity.entity_id
-                if entity.translation_key in PROGRAM_KEYS:
+            elif ENTITY_DOMAINS.get(key) == entity.domain:
+                self.entity_ids[key] = entity.entity_id
+                if key in PROGRAM_KEYS:
                     programs.extend((entity.capabilities or {}).get("options") or [])
         if self.cycle_entity_id is None:
             raise ConfigEntryNotReady(f"No cycle state entity found for {self.name}")
-        # the type of appliance isn't kept anywhere to be read, but its programs are named for it
+        # the same appliance through another integration, heard from only while this one can't be
+        cycles = cycle_entities(self.hass)
+        for companion in companions(self.hass, device_id, cycles):
+            self.fallback_cycle_entity_id = self.fallback_cycle_entity_id or cycles[companion].entity_id
+            for entity in er.async_entries_for_device(entity_registry, companion):
+                key = role_key(entity)
+                if key is not None and not entity.disabled and ENTITY_DOMAINS.get(key) == entity.domain:
+                    self.fallback_ids.setdefault(key, entity.entity_id)
+        # the type of appliance isn't kept anywhere to be read, but its programs are named for it, or failing that,
+        # for an integration with several types, its entities
         appliance_type = next(
             (kind for prefix, kind in APPLIANCE_TYPES.items() if any(p.startswith(prefix) for p in programs)), None
+        ) or next(
+            (kind for prefix, kind in KEY_TYPE_PREFIXES.items() if any(k.startswith(prefix) for k in translation_keys)),
+            None,
         )
         self.icon = TYPE_ICONS.get(appliance_type or "", self._name_icon())
         # the one phase there is to know of is an oven warming up, Home Connect reporting none for anything else
@@ -548,20 +605,22 @@ class HomeConnectWatcher(ApplianceWatcher):
             self.notify_phase = self.entry.options.get(CONF_NOTIFY_PHASE, self.phase_default)
 
         # a cycle under way at startup still has its Live Activity closed when it ends
-        state = self.hass.states.get(self.cycle_entity_id)
+        state = self._cycle_state()
         self.running = state is not None and state.state in STATES_ACTIVE
         # and with no knowing whether its oven has been up to heat, it isn't taken to be warming up
         self.preheated = self.running
 
-        self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._cycle_changed))
+        cycle_entity_ids = [e for e in (self.cycle_entity_id, self.fallback_cycle_entity_id) if e]
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, cycle_entity_ids, self._cycle_changed))
         self.entry.async_on_unload(self._keep_running)
         self.entry.async_on_unload(self._forget_preheated)
         for keys, listener in (
             ((PROGRESS_KEY,), self._progress_changed),
+            ((STAGE_KEY,), self._stage_changed),
             ((CAVITY_TEMPERATURE_KEY, TARGET_TEMPERATURE_KEY), self._temperature_changed),
             (PREHEAT_FINISHED_KEYS, self._preheat_finished),
         ):
-            if entity_ids := [self.entity_ids[key] for key in keys if key in self.entity_ids]:
+            if entity_ids := [ids[key] for ids in (self.entity_ids, self.fallback_ids) for key in keys if key in ids]:
                 self.entry.async_on_unload(async_track_state_change_event(self.hass, entity_ids, listener))
 
     def _temperatures(self) -> tuple[float, float] | None:
@@ -688,12 +747,41 @@ class HomeConnectWatcher(ApplianceWatcher):
         new_state = event.data["new_state"]
         if new_state is None:
             return
+        if new_state.entity_id != self.cycle_entity_id and self._known(self.cycle_entity_id):
+            # the other integration for the same appliance, while this one can be heard from, is only an echo
+            return
         state: str = new_state.state
         _LOGGER.debug("APPLIANCES %s cycle state %s, running: %s", self.name, state, self.running)
-        if state == STATE_RUN:
+        old_state = event.data["old_state"]
+        if old_state is not None and old_state.state == state:
+            # only its attributes changed, and a cycle over by its stage may still be running till it stops
+            return
+        if state in (STATE_UNKNOWN, STATE_UNAVAILABLE) and new_state.entity_id == self.cycle_entity_id:
+            # can't be heard from, so the other integration for the appliance may already have told of its end
+            await self._fallback_over(event.context)
+            return
+        await self._cycle_is(state, event.context)
+
+    async def _cycle_is(self, state: str, context: Context) -> None:
+        if state in (*STATES_FINISHED, *STATES_SETTLING, *STATES_ABANDONED):
+            self.over_by_stage = False
+        if state in STATES_RUN and self.over_by_stage:
+            # still running after its stage said it was over, a dryer carrying on as it is, door opened or not
+            return
+        if state in STATES_RUN:
             # back on within moments of going off, so the same cycle
             self._keep_running()
-            if self.running:
+            if self.running or self.starting:
+                return
+            # a moment for the program and stage, which may come just after, to be what's told
+            self.starting = True
+            try:
+                await asyncio.sleep(START_SETTLE)
+            finally:
+                self.starting = False
+            cycle = self._cycle_state()
+            if self.running or cycle is None or cycle.state not in STATES_ACTIVE:
+                # over, or started by another report, while it waited
                 return
             self.running = True
             # unless it's hot already, from not long having been off
@@ -705,17 +793,53 @@ class HomeConnectWatcher(ApplianceWatcher):
             # an oven already warm starts part of the way along
             progress = self._progress()
             self.last_progress_mark = -1 if progress is None else self._mark(progress)
-            await self._started(event.context)
+            await self._started(context)
         elif not self.running:
             return
         elif state in STATES_SETTLING:
             if self._cancel_end is None:
-                self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, partial(self._settled, event.context))
+                self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, partial(self._settled, context))
         elif state in STATES_FINISHED:
-            await self._cycle_over(True, event.context)
+            await self._cycle_over(True, context)
         elif state in STATES_ABANDONED:
-            await self._cycle_over(False, event.context)
+            await self._cycle_over(False, context)
         # anything else, such as `unavailable` while the vendor cloud is away, leaves the cycle as it was
+
+    async def _fallback_over(self, context: Context) -> None:
+        """The end of the cycle, if that's what the other integration for the appliance last said, since it went
+        unheard while this one could be heard from. A start isn't taken from it, the cloud often lagging behind"""
+        if not self.running:
+            return
+        stage = self._known(self.fallback_ids.get(STAGE_KEY))
+        if stage is not None and stage.state in STAGES_FINISHED:
+            await self._over_by_stage(context)
+            return
+        cycle = self._known(self.fallback_cycle_entity_id)
+        if cycle is not None and cycle.state in (*STATES_FINISHED, *STATES_SETTLING, *STATES_ABANDONED):
+            await self._cycle_is(cycle.state, context)
+
+    async def _stage_changed(self, event: Event[EventStateChangedData]) -> None:
+        """The appliance moving on within its cycle, such as a dryer from drying to cooling"""
+        new_state = event.data["new_state"]
+        if not self.running or new_state is None or new_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+        if new_state.entity_id != self.entity_ids.get(STAGE_KEY) and self._known(self.cycle_entity_id):
+            # the other integration for the same appliance, while this one can be heard from, is only an echo
+            return
+        if new_state.state in STAGES_FINISHED:
+            await self._over_by_stage(event.context)
+            return
+        if not supernotify_available(self.hass):
+            return
+        async with self._sending:
+            if self.running and (message := self._phase()):
+                await self._tell(message, False, event.context)
+
+    async def _over_by_stage(self, context: Context) -> None:
+        # done, though it may carry on as it is a while, a dryer tumbling its load now and then
+        cycle = self._cycle_state()
+        self.over_by_stage = cycle is not None and cycle.state in STATES_ACTIVE
+        await self._cycle_over(True, context)
 
     async def _settled(self, context: Context, now: datetime) -> None:
         self._cancel_end = None
