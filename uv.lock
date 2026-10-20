@@ -306,7 +306,7 @@ wheels = [
 
 [[package]]
 name = "appliance-autonotify"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "homeassistant" },
 ]
