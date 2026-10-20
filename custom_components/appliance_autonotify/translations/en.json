@@ -65,7 +65,8 @@
                     "notify_phase": "Notify phases",
                     "notify_progress": "Notify progress",
                     "dashboard": "Dashboard to open",
-                    "program_in_title": "Program in title"
+                    "live_title": "Live Activity title",
+                    "live_detail": "Live Activity shows"
                 },
                 "data_description": {
                     "notify_start": "Send a notification when the appliance starts. When off, the Live Activity is still opened, silently and on phones only.",
@@ -73,7 +74,8 @@
                     "notify_phase": "Send a notification when a phase of the cycle is over, such as an oven getting up to heat. When off, it is only shown on the Live Activity.",
                     "dashboard": "Opened when a notification or the Live Activity is tapped. Leave empty to open the app where it was.",
                     "notify_progress": "Send a notification every 10% of the cycle. When off, progress is only shown on the progress bar of the Live Activity, which is updated silently.",
-                    "program_in_title": "Show the program beside the name on the Live Activity, such as \"Dishwasher · Eco 50ºC\", whenever there's a time left to show, which on an iPhone's Lock Screen takes the place of the message. Turn off if the program names are too long to fit."
+                    "live_title": "What the Live Activity is titled with. The program is useful beside the name when the time left takes the place of the message, as it does on an iPhone's Lock Screen. Choose the name only if the program names are too long to fit, or if the appliance is always on the same program.",
+                    "live_detail": "Show the time left, where the appliance reports when it will finish, or the program in its place. The program can be the whole cycle, or a phase of it, such as a pre-rinse."
                 },
                 "sections": {
                     "start": {
@@ -152,6 +154,19 @@
                 "coffee_maker": "coffee",
                 "cleaning_robot": "vacuum",
                 "kettle": "kettle"
+            }
+        },
+        "live_title": {
+            "options": {
+                "name_program": "Appliance name and program",
+                "program": "Program only",
+                "name": "Appliance name only"
+            }
+        },
+        "live_detail": {
+            "options": {
+                "time_remaining": "Time remaining",
+                "program": "Program"
             }
         }
     }

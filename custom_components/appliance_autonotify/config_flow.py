@@ -33,13 +33,14 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_LIVE_DETAIL,
+    CONF_LIVE_TITLE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
-    CONF_PROGRAM_IN_TITLE,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
@@ -58,12 +59,17 @@ from .const import (
     DEFAULT_TITLE,
     DISCOVERY_TITLE,
     DOMAIN,
+    LIVE_DETAIL_TIME,
+    LIVE_DETAILS,
+    LIVE_TITLE_NAME_PROGRAM,
+    LIVE_TITLES,
     NAME_PLACEHOLDER,
     PROGRAM_PLACEHOLDER,
     SUPERNOTIFY_MISSING,
     SUPERNOTIFY_PRESENT,
     TYPE_DISCOVERY,
     TYPE_POWER,
+    TYPE_VACUUM,
 )
 from .dashboards import dashboards
 from .discovery import find_appliances, plug_switch
@@ -76,12 +82,13 @@ SECTION_START = "start"
 SECTION_END = "end"
 SECTION_NOTIFY = "notify"
 
-# a switch left as it comes isn't a setting either
-DEFAULT_SWITCHES: dict[str, bool] = {
+# a switch or a choice left as it comes isn't a setting either
+DEFAULT_CHOICES: dict[str, bool | str] = {
     CONF_NOTIFY_START: False,
     CONF_NOTIFY_END: True,
     CONF_NOTIFY_PROGRESS: False,
-    CONF_PROGRAM_IN_TITLE: True,
+    CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM,
+    CONF_LIVE_DETAIL: LIVE_DETAIL_TIME,
 }
 
 DEFAULT_TEXTS: dict[str, str] = {
@@ -111,8 +118,14 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
     if progress:
         fields[vol.Required(CONF_NOTIFY_PROGRESS, default=False)] = BooleanSelector()
         if supernotify_available(hass):
-            # only a Live Activity has a title that changes as the cycle goes on
-            fields[vol.Required(CONF_PROGRAM_IN_TITLE, default=True)] = BooleanSelector()
+            # only a Live Activity has a title that changes as the cycle goes on, and a timer
+            for key, options, default in (
+                (CONF_LIVE_TITLE, LIVE_TITLES, LIVE_TITLE_NAME_PROGRAM),
+                (CONF_LIVE_DETAIL, LIVE_DETAILS, LIVE_DETAIL_TIME),
+            ):
+                fields[vol.Required(key, default=default)] = SelectSelector(
+                    SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
+                )
     notify: dict[vol.Marker, Any] = {}
     end: dict[vol.Marker, Any] = {
         vol.Optional(CONF_END_TITLE): TextSelector(),
@@ -194,10 +207,14 @@ def power_schema(with_name: bool) -> vol.Schema:
 
 class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+    # 2 has the choice of what the title of a Live Activity names in place of the switch for the program in it
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         self._device_id: str | None = None
         self._name: str = ""
+        # how the cycle of the appliance found is told, where it isn't by a vendor platform
+        self._type: dict[str, str] = {}
         # a power monitor found by its name, to be filled in on the form for a look before it's set up
         self._power: dict[str, Any] = {}
 
@@ -252,7 +269,8 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
         # a discovery of the same appliance may be waiting, and goes once this entry exists
         await self.async_set_unique_id(import_data[CONF_DEVICE_ID], raise_on_progress=False)
         self._abort_if_unique_id_configured()
-        return self.async_create_entry(title=import_data[CONF_NAME], data={CONF_DEVICE_ID: import_data[CONF_DEVICE_ID]})
+        data = {k: v for k, v in import_data.items() if k in (CONF_DEVICE_ID, CONF_TYPE)}
+        return self.async_create_entry(title=import_data[CONF_NAME], data=data)
 
     async def async_step_integration_discovery(self, discovery_info: dict[str, Any]) -> ConfigFlowResult:
         """An appliance found with automatic discovery off, or a power monitor named for one, so offered to be added"""
@@ -264,6 +282,7 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_power()
         self._device_id = discovery_info[CONF_DEVICE_ID]
         self._name = discovery_info[CONF_NAME]
+        self._type = {CONF_TYPE: discovery_info[CONF_TYPE]} if CONF_TYPE in discovery_info else {}
         await self.async_set_unique_id(self._device_id)
         self._abort_if_unique_id_configured()
         self.context["title_placeholders"] = {"name": self._name}
@@ -271,7 +290,7 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(title=self._name, data={CONF_DEVICE_ID: self._device_id})
+            return self.async_create_entry(title=self._name, data={CONF_DEVICE_ID: self._device_id} | self._type)
         self._set_confirm_only()
         return self.async_show_form(
             step_id="confirm",
@@ -312,7 +331,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             # text left as the default isn't a setting, so it goes on following the name of the appliance
             unset = (
                 defaults
-                | DEFAULT_SWITCHES
+                | DEFAULT_CHOICES
                 | {CONF_NOTIFY_PHASE: self._phase_default(), CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS}
             )
             settings = {
@@ -324,9 +343,11 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 self._settings = settings
                 return await self.async_step_power()
             return self.async_create_entry(data=settings)
-        # a power monitored appliance has no progress to report
+        # a power monitored appliance has no progress to report, nor has a robot vacuum
         schema = await settings_schema(
-            self.hass, progress=self.config_entry.data.get(CONF_TYPE) != TYPE_POWER, phase=self._phase_default()
+            self.hass,
+            progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
+            phase=self._phase_default(),
         )
         shown = dict(self.config_entry.options)
         if shown.get(CONF_DASHBOARD) not in dashboards(self.hass):

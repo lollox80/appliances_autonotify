@@ -25,6 +25,7 @@ from .const import (
     ROLE_KEYS,
     STATES_RUN,
     TYPE_DISCOVERY,
+    TYPE_VACUUM,
 )
 from .words import name_type
 
@@ -41,6 +42,8 @@ SWITCH_DOMAIN = "switch"
 class Appliance:
     device_id: str
     name: str
+    # how its cycle is told, None for an appliance of a vendor platform
+    type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,24 @@ def find_appliances(hass: HomeAssistant) -> list[Appliance]:
         if (device := device_registry.async_get(device_id)) is not None:
             found.append(Appliance(device_id, device.name_by_user or device.name or cycle.entity_id))
     return found
+def find_appliances(hass: HomeAssistant) -> list[Appliance]:
+    """Devices of the known platforms that have a cycle state entity, and robot vacuums of any make"""
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    found: dict[str, Appliance] = {}
+    for entity in entity_registry.entities.values():
+        if entity.device_id is None or entity.disabled:
+            continue
+        if entity.domain == TYPE_VACUUM:
+            kind: str | None = TYPE_VACUUM
+        elif entity.translation_key is not None and CYCLE_KEYS.get(entity.platform) == entity.translation_key:
+            kind = None
+        else:
+            continue
+        device = device_registry.async_get(entity.device_id)
+        if device is not None:
+            found[device.id] = Appliance(device.id, device.name_by_user or device.name or entity.entity_id, kind)
+    return list(found.values())
 
 
 def is_power_sensor(entity: er.RegistryEntry) -> bool:
@@ -224,7 +245,8 @@ def async_discover(hass: HomeAssistant) -> None:
             hass,
             DOMAIN,
             context={"source": source},
-            data={CONF_DEVICE_ID: appliance.device_id, CONF_NAME: appliance.name},
+            data={CONF_DEVICE_ID: appliance.device_id, CONF_NAME: appliance.name}
+            | ({CONF_TYPE: appliance.type} if appliance.type else {}),
         )
     for monitor in find_power_monitors(hass):
         # only ever offered, since the name is a guess where a cycle state entity isn't, and the threshold is
@@ -248,9 +270,8 @@ def async_start_discovery(hass: HomeAssistant) -> None:
         entity = er.async_get(hass).async_get(event.data["entity_id"])
         if entity is None:
             return
-        # any entity of an appliance, which may make one through another integration the one to prefer
-        appliance_entity = role_key(entity) == CYCLE_KEY or role_key(entity) in ENTITY_DOMAINS
-        if (event.data["action"] == "create" and appliance_entity) or is_power_sensor(entity):
+        created = event.data["action"] == "create"
+        if (created and (entity.platform in CYCLE_KEYS or entity.domain == TYPE_VACUUM)) or is_power_sensor(entity):
             async_discover(hass)
 
     @callback

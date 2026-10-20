@@ -7,9 +7,17 @@ from typing import TYPE_CHECKING
 from homeassistant.const import CONF_TYPE
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN, TYPE_DISCOVERY, TYPE_POWER
+from .const import (
+    CONF_LIVE_TITLE,
+    CONF_PROGRAM_IN_TITLE,
+    DOMAIN,
+    LIVE_TITLE_NAME,
+    TYPE_DISCOVERY,
+    TYPE_POWER,
+    TYPE_VACUUM,
+)
 from .discovery import async_discover, async_start_discovery
-from .watcher import ApplianceWatcher, HomeConnectWatcher, PowerWatcher
+from .watcher import ApplianceWatcher, HomeConnectWatcher, PowerWatcher, VacuumWatcher
 from .words import async_load_words
 
 if TYPE_CHECKING:
@@ -28,13 +36,26 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -> bool:
+    if entry.version > 1:
+        # from a later version, so not to be guessed at
+        return False
+    if entry.minor_version < 2:
+        options = dict(entry.options)
+        # the program left out of the title is the name alone, and left in it is the choice as it comes
+        if options.pop(CONF_PROGRAM_IN_TITLE, True) is False:
+            options[CONF_LIVE_TITLE] = LIVE_TITLE_NAME
+        hass.config_entries.async_update_entry(entry, options=options, minor_version=2)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -> bool:
     if entry.data.get(CONF_TYPE) == TYPE_DISCOVERY:
         # nothing to watch, only to look again now that automatic discovery may have been switched
         async_discover(hass)
         return True
-    watcher_class = PowerWatcher if entry.data.get(CONF_TYPE) == TYPE_POWER else HomeConnectWatcher
-    watcher: ApplianceWatcher = watcher_class(hass, entry)
+    watchers: dict[str | None, type[ApplianceWatcher]] = {TYPE_POWER: PowerWatcher, TYPE_VACUUM: VacuumWatcher}
+    watcher = watchers.get(entry.data.get(CONF_TYPE), HomeConnectWatcher)(hass, entry)
     watcher.async_start()
     watcher.async_listen_for_actions()
     entry.runtime_data = watcher

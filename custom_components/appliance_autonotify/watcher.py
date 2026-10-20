@@ -39,13 +39,14 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_LIVE_DETAIL,
+    CONF_LIVE_TITLE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
-    CONF_PROGRAM_IN_TITLE,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
     CONF_START_MESSAGE,
@@ -70,8 +71,13 @@ from .const import (
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
     KEY_TYPE_PREFIXES,
+    LIVE_DETAIL_PROGRAM,
+    LIVE_DETAIL_TIME,
     LIVE_SETTLE,
     LIVE_TITLE,
+    LIVE_TITLE_NAME,
+    LIVE_TITLE_NAME_PROGRAM,
+    LIVE_TITLE_PROGRAM,
     MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
     MOBILE_PUSH_TRANSPORT,
@@ -102,10 +108,23 @@ from .const import (
     STATES_FINISHED,
     STATES_RUN,
     STATES_SETTLING,
+    STUCK_MESSAGES,
     SUPERNOTIFY_DOMAIN,
     TARGET_TEMPERATURE_KEY,
     TEMPERATURE_STEP,
     TYPE_ICONS,
+    TYPE_VACUUM,
+    VACUUM_BLIP,
+    VACUUM_BLIP_KIND,
+    VACUUM_BLIP_SETTLE,
+    VACUUM_CLEANING,
+    VACUUM_DONE,
+    VACUUM_ERROR,
+    VACUUM_MIDWAY_KIND,
+    VACUUM_MIDWAY_SETTLE,
+    VACUUM_PAUSED,
+    VACUUM_RETURNING,
+    VACUUM_SETTLE,
 )
 from .dashboards import dashboard_url
 from .discovery import companions, cycle_entities, is_cycle_entity, role_key
@@ -113,6 +132,7 @@ from .supernotify_api import deliveries_by_transport, supernotify_available
 from .words import name_type
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
     from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
@@ -145,7 +165,8 @@ class ApplianceWatcher:
         self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
-        self.program_in_title: bool = entry.options.get(CONF_PROGRAM_IN_TITLE, True)
+        self.live_title: str = entry.options.get(CONF_LIVE_TITLE, LIVE_TITLE_NAME_PROGRAM)
+        self.live_detail: str = entry.options.get(CONF_LIVE_DETAIL, LIVE_DETAIL_TIME)
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
         # the program of the cycle just over, kept for its reminders, since an appliance may by then have gone back
@@ -241,11 +262,7 @@ class ApplianceWatcher:
             )
         else:
             data = self._live_data()
-            if self.program_in_title and "when" in data and (phase := self._title_phase()) and phase not in title:
-                # with a timer there's no message on the iOS Lock Screen, so what it's doing goes beside the name
-                title = LIVE_TITLE.format(title=title, phase=phase)
-                if message == phase and (progress := self._progress()) is not None:
-                    message = self._progress_message(progress)
+            title, message = self._live_title(title, message, timer="when" in data)
             # with nothing to hear, and nothing sent anywhere but to phones
             await self._supernotify(
                 message,
@@ -256,6 +273,19 @@ class ApplianceWatcher:
                 # iOS forgets where a tap goes unless told again on every update
                 actions=self._tap_actions(),
             )
+
+    def _live_title(self, title: str, message: str, timer: bool) -> tuple[str, str]:
+        """The title of a quiet Live Activity update as chosen, and its message, which needn't say the program again"""
+        phase = self._phase()
+        # with no timer the message is seen, and says what it's doing itself
+        if not timer or self.live_title == LIVE_TITLE_NAME or not phase or phase in title:
+            return title, message
+        # with a timer there's no message on the iOS Lock Screen, so what it's doing goes in the title
+        if message == phase and (progress := self._progress()) is not None:
+            message = self._progress_message(progress)
+        if self.live_title == LIVE_TITLE_PROGRAM:
+            return phase, message
+        return LIVE_TITLE.format(title=title, phase=phase), message
 
     async def _ended(self, finished: bool, context: Context) -> None:
         self.last_program = self._program() or self.last_program
@@ -443,7 +473,7 @@ class ApplianceWatcher:
             data["progress_max"] = 100
         state = self._state(FINISH_TIME_KEY)
         finish_time = dt_util.parse_datetime(state.state) if state is not None else None
-        if finish_time is not None:
+        if finish_time is not None and self.live_detail != LIVE_DETAIL_PROGRAM:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
         elif progress is not None:
@@ -924,3 +954,134 @@ class PowerWatcher(ApplianceWatcher):
             return
         self.running = False
         await self._ended(True, _later(context))
+
+
+class VacuumWatcher(ApplianceWatcher):
+    """A robot vacuum of any make, whose cleaning is the cycle, from setting off till it's back or stopped by itself"""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        super().__init__(hass, entry)
+        self._cancel_end: CALLBACK_TYPE | None = None
+        # what it's waiting to see last, back on its dock or stuck
+        self._pending: str | tuple[str, ...] | None = None
+        # not yet known whether it was cleaning when Home Assistant started, until it says something telling
+        self._unsure = False
+
+    @callback
+    def async_start(self) -> None:
+        device_id: str = self.entry.data[CONF_DEVICE_ID]
+        device = dr.async_get(self.hass).async_get(device_id)
+        if device is not None:
+            self.name = device.name_by_user or device.name or self.name
+        self.cycle_entity_id = next(
+            (e.entity_id for e in er.async_entries_for_device(er.async_get(self.hass), device_id) if e.domain == TYPE_VACUUM),
+            None,
+        )
+        if self.cycle_entity_id is None:
+            raise ConfigEntryNotReady(f"No vacuum entity found for {self.name}")
+        self.icon = TYPE_ICONS["cleaning_robot"]
+        # a cleaning under way at startup still has its Live Activity closed when it ends
+        state = self.hass.states.get(self.cycle_entity_id)
+        self.running = state is not None and state.state not in (*VACUUM_DONE, VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
+        # with nothing to go by yet, or an error that some integrations report again on reconnecting, whatever it says
+        # next tells whether a cleaning was under way
+        self._unsure = state is None or state.state in (VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._activity_changed))
+        self.entry.async_on_unload(self._keep_running)
+
+    @callback
+    def _keep_running(self) -> None:
+        self._pending = None
+        if self._cancel_end is not None:
+            self._cancel_end()
+            self._cancel_end = None
+
+    async def _activity_changed(self, event: Event[EventStateChangedData]) -> None:
+        new_state = event.data["new_state"]
+        if new_state is None:
+            return
+        state: str = new_state.state
+        _LOGGER.debug("APPLIANCES %s vacuum %s, running: %s", self.name, state, self.running)
+        if state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            # away with the vendor cloud, which changes nothing
+            return
+        if self._unsure and state != VACUUM_ERROR:
+            self._unsure = False
+            if not self.running and state in (VACUUM_CLEANING, VACUUM_PAUSED, VACUUM_RETURNING):
+                # cleaning since before Home Assistant started, so already told, and its end still to tell
+                self.running = True
+                return
+        if not self.running:
+            if state == VACUUM_CLEANING:
+                self.running = True
+                await self._started(event.context)
+            return
+        old_state = event.data["old_state"]
+        if state in VACUUM_DONE:
+            if old_state is not None and old_state.state == VACUUM_CLEANING:
+                if (new_state.last_changed - old_state.last_changed).total_seconds() < VACUUM_BLIP:
+                    # back within a moment of setting off, which some integrations report as a vacuum leaves its dock
+                    # and then keep to while it cleans, so only believed if nothing more is heard for a long while
+                    if self._pending is None:
+                        self._wait(self._settled, VACUUM_BLIP_KIND, event.context, VACUUM_BLIP_SETTLE)
+                elif self._pending not in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+                    # straight back from cleaning, without saying it was on its way, as when it washes its mop or
+                    # fills its tank part way through, so given longer to set off again
+                    self._wait(self._settled, VACUUM_MIDWAY_KIND, event.context, VACUUM_MIDWAY_SETTLE)
+            elif self._pending not in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+                # over only once it has stayed back
+                self._wait(self._settled, VACUUM_DONE, event.context)
+        elif state == VACUUM_ERROR:
+            # stuck only if it stays so, since some integrations report a past error again on reconnecting, while
+            # the vacuum carries on, and an error once back on its dock is for its own app to tell
+            if self._pending is None:
+                self._wait(self._stuck_for_good, VACUUM_ERROR, event.context)
+        elif state == VACUUM_PAUSED and self._pending in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+            # paused on its dock, which some integrations report once one is back, isn't setting off again
+            return
+        else:
+            # cleaning, paused or on its way back is the same cleaning
+            self._keep_running()
+
+    @callback
+    def _wait(
+        self,
+        then: Callable[[Context, datetime], Coroutine[Any, Any, None]],
+        kind: str | tuple[str, ...],
+        context: Context,
+        delay: float = VACUUM_SETTLE,
+    ) -> None:
+        self._keep_running()
+        self._pending = kind
+        self._cancel_end = async_call_later(self.hass, delay, partial(then, context))
+
+    async def _settled(self, context: Context, now: datetime) -> None:
+        self._cancel_end = None
+        self._pending = None
+        self.running = False
+        await self._ended(True, _later(context))
+
+    async def _stuck_for_good(self, context: Context, now: datetime) -> None:
+        # stopped where it is, so no end to tell, only that it can't go on without someone
+        self._cancel_end = None
+        self._pending = None
+        self.running = False
+        await self._ended(False, _later(context))
+        await self._stuck(_later(context))
+
+    async def _stuck(self, context: Context) -> None:
+        stuck = STUCK_MESSAGES.get(self.hass.config.language.split("-")[0], STUCK_MESSAGES["en"])
+        message = stuck.replace(NAME_PLACEHOLDER, self.name)
+        title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
+        async with self._sending:
+            if supernotify_available(self.hass):
+                await self._supernotify(
+                    message,
+                    title,
+                    context,
+                    resend=True,
+                    extra_data={"notification_icon": self.icon},
+                    actions=self._tap_actions(),
+                )
+            else:
+                await self._send_message(message, title, context)
