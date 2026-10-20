@@ -10,11 +10,10 @@ Automatic notifications for household appliances in Home Assistant, with no auto
 
 ![Example Dishwasher Progress](./assets/images/dishwasher_progress.png)
 
-When a dishwasher, washing machine, oven or other appliance starts a cycle, you're told it started, your phone
-shows a [Live Activity](https://companion.home-assistant.io/docs/notifications/live-activities) with progress
+When a dishwasher, washing machine, oven or other appliance starts a cycle, you're told it started, your phone shows a [Live Activity](https://companion.home-assistant.io/docs/notifications/live-activities) with progress
 and time remaining while it runs, and you're told when it finishes.
 
-This is an early version to try with real appliances. It supports Bosch, Neff and Siemens appliances connected with the Home Assistant [Home Connect](https://www.home-assistant.io/integrations/home_connect/) integration, robot vacuums using the [Vacuum Integration](https://www.home-assistant.io/integrations/vacuum/) and Samsung washers, dryers and dishwashers through [SmartThings](https://www.home-assistant.io/integrations/smartthings/)
+It works with Bosch, Neff and Siemens appliances connected with the Home Assistant [Home Connect](https://www.home-assistant.io/integrations/home_connect/) integration, robot vacuums using the [Vacuum Integration](https://www.home-assistant.io/integrations/vacuum/) and Samsung washers, dryers and dishwashers through [SmartThings](https://www.home-assistant.io/integrations/smartthings/)
 or [LocalThings](https://github.com/mbillow/localthings), in English only. Any other appliance can be added by hand if it has a power monitor, such as a smart plug.
 
 ## What You Need
@@ -22,64 +21,48 @@ or [LocalThings](https://github.com/mbillow/localthings), in English only. Any o
 - Home Assistant 2026.7 or later
 - An appliance set up with the Home Connect, SmartThings or LocalThings integration, a robot vacuum of any make, or
   one with a power sensor
-- [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything
-  beyond a plain notification.
+- [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything beyond a plain notification.
+  - Optional, however without Supernotify, it only sends a start and an end notification, to every phone with the Home Assistant app unless you choose other notify entities.
   - `v2.14.0` recommended as minimum, though most features will work with earlier releases
 - Home Assistant app installed on an Apple mobile device, minimum iOS 17.2, or on an Android one, where a
-  [Live Update](https://companion.home-assistant.io/docs/notifications/live-activities) needs Android 16 or later,
-  and earlier versions show an ordinary notification with a progress bar
+  [Live Update](https://companion.home-assistant.io/docs/notifications/live-activities) needs Android 16 or later, and earlier versions show an ordinary notification with a progress bar.
 
-Without Supernotify, it only sends a start and an end notification, to every phone with the Home Assistant app
-unless you choose other notify entities.
 
 ## Install
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rhizomatics&repository=appliance_autonotify&category=integration)
 
-1. Use the button above, or in HACS add `https://github.com/rhizomatics/appliance_autonotify` as a custom
-   repository of type *Integration*, then install *Appliance Auto Notify* and restart Home Assistant
+1. Use the button above, or in HACS add `https://github.com/rhizomatics/appliance_autonotify` as a custom repository of type *Integration*, then install *Appliance Auto Notify* and restart Home Assistant
 2. In *Settings*, *Devices & services*, choose *Add integration* and pick *Appliance Auto Notify*
 3. Leave *Set up appliances automatically* on, and submit
 
-That's all. Every appliance with a cycle Home Assistant reports is set up straight away, and so is any you add later. Each is listed on
-the integration's page, alongside *Automatic discovery*, and notifies with no further settings.
+That's all. Every appliance with a cycle Home Assistant reports is set up straight away, and so is any you add later. Each is listed on the integration's page, alongside *Automatic discovery*, and notifies with no further settings.
 
-To stop the notifications for an appliance, disable it rather than delete it, since a deleted appliance is found
-and set up again.
+To stop the notifications for an appliance, disable it rather than delete it, since a deleted appliance is found and set up again.
 
 ### Choosing Appliances Yourself
 
-Turn *Set up appliances automatically* off, on the first screen or later from the settings of *Automatic discovery*,
-and appliances are instead offered as *Discovered* on the *Devices & services* page. Choose *Add* to set one up,
-or *Ignore* on any you don't want.
+Turn *Set up appliances automatically* off, on the first screen or later from the settings of *Automatic discovery*, and appliances are instead offered as *Discovered* on the *Devices & services* page. Choose *Add* to set one up, or *Ignore* on any you don't want.
 
 ### Appliances Through Other Integrations
 
-An appliance is found by what its entities do, not by the integration they come from: a sensor of the state of its
-cycle, whose states include one of a cycle under way, along with whichever of its stage, progress, finish time and
-program the integration reports. Integrations name these differently, and use different words for the same states,
-`run` or `active` for a cycle under way and `stop` or `finished` for its end, so both are kept as lists of the names
-and states known, which is all another integration with the same kind of entities needs.
+An appliance is found by what its entities do, not by the integration they come from: a sensor of the state of its cycle, whose states include one of a cycle under way, along with whichever of its stage, progress, finish time and program the integration reports. Integrations name these differently, and use different words for the same states,
+`run` or `active` for a cycle under way and `stop` or `finished` for its end, so both are kept as lists of the names and states known, which is all another integration with the same kind of entities needs.
 
-A stage that means the cycle is over ends it there, such as a dryer's *Wrinkle prevent*, when it only tumbles its load
-now and then so it won't crease, though its cycle state stays running for as long as that goes on, and running on
-from there isn't a new cycle until the cycle state has said it's over.
+A stage that means the cycle is over ends it there, such as a dryer's *Wrinkle prevent*, when it only tumbles its load now and then so it won't crease, though its cycle state stays running for as long as that goes on, and running on from there isn't a new cycle until the cycle state has said it's over.
 
-The same appliance through two integrations, as a Samsung one is through SmartThings and LocalThings, which share its
-id, is set up once, through the integration that reaches it on the local network rather than through the vendor's
-cloud, or failing that the one that tells more of its cycle. The other is only listened to while the first can't be
-heard from, though an end it told meanwhile still counts once the first goes quiet. An appliance already set up
-through one isn't offered again when the other is added, and one offered through the cloud is offered through the
-local network instead once that's found.
+The same appliance through two integrations, as a Samsung one is through SmartThings and LocalThings, which share its `id`, is set up once, through the integration that reaches it on the local network rather than through the vendor's cloud, or failing that the one that tells more of its cycle. The other is only listened to while the first can't be
+heard from, though an end it told meanwhile still counts once the first goes quiet. An appliance already set up through one isn't offered again when the other is added, and one offered through the cloud is offered through the local network instead once that's found.
+
 ### Robot Vacuums
 
-A robot vacuum of any make, through whichever integration Home Assistant has for it, is found and set up like a
-Home Connect appliance. Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its
-dock, or stopped by itself, for 10 minutes after saying it was on its way back. A vacuum that goes straight to its dock
-from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
-before its cleaning is taken to be over. Paused, or on its way back, it's still the same cleaning too, and paused once
-back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes
-while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
+A robot vacuum of any make, through whichever integration Home Assistant has for it, is found and set up like the other appliances.
+
+Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its dock, or stopped by itself, for 10 minutes after saying it was on its way back. A vacuum that goes straight to its dock from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
+before its cleaning is taken to be over. 
+
+Paused, or on its way back, it's still the same cleaning too, and paused once
+back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
 report a past error again for a while as they reconnect, with the vacuum carrying on.
 
 ### Power Monitored Appliances
@@ -89,11 +72,7 @@ An appliance with no supported integration can be added if a sensor measures the
 1. On the integration's page, choose *Add service*
 2. Give the appliance a name, and choose its power sensor
 
-A power monitor named for a washing machine, dryer, dishwasher or oven, in English or in the language of Home Assistant,
-such as a smart plug called *Washing machine* or *Lavatrice*, is found by itself and offered as *Discovered*, with its
-sensor and plug already filled in. It's never
-set up without asking, even with *Set up appliances automatically* on, since a name is only a guess, and the threshold
-is worth checking first. Estimated or derived power sensors, such as Powercalc's, are left out.
+A power monitor named for a washing machine, dryer, dishwasher or oven, in English or in the language of Home Assistant, such as a smart plug called *Washing machine* or *Lavatrice*, is found by itself and offered as *Discovered*, with its sensor and plug already filled in. It's never set up without asking, even with *Set up appliances automatically* on, since a name is only a guess, and the threshold is worth checking first. Estimated or derived power sensors, such as Powercalc's, are left out.
 
 | Setting         | Default    | What it does                                                                              |
 | --------------- | ---------- | ----------------------------------------------------------------------------------------- |
@@ -102,22 +81,28 @@ is worth checking first. Estimated or derived power sensors, such as Powercalc's
 | Minimum running time | 0 seconds | How long power must have been above the threshold before it counts as a cycle, so a door opened or a button pressed is ignored |
 | Smart plug      | None       | The switch the appliance is plugged into, offered as a button on the end notification to switch it off |
 
-Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking. Set a minimum running time,
-60 seconds or so, for appliances that draw a little power when their door is opened or a button pressed, such as a
-dishwasher whose light comes on, so that isn't notified as a cycle. Time above the threshold adds up across drop outs
-shorter than the grace period, so a cycle that pauses as it starts still counts.
+Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking. Set a minimum running time, 60 seconds or so, for appliances that draw a little power when their door is opened or a button pressed, such as a
+dishwasher whose light comes on, so that isn't notified as a cycle. Time above the threshold adds up across drop outs shorter than the grace period, so a cycle that pauses as it starts still counts.
 
 ## Settings
 
-Nothing needs changing for notifications to work. Each appliance on the integration's page has settings: *Notify
-start* and *Notify end* switches, the start off and the end on by default, for an oven a *Notify phases* switch, on
-by default,
-a *Notify progress* switch, off by default, with Supernotify a choice of *Live Activity title* and of what the
-*Live Activity shows*,
-a *Dashboard to open* when a notification or the Live Activity is tapped, and then three sections that start closed.
-With *Notify start* or *Notify end* off, that notification isn't sent, but the Live Activity is still opened and
-closed, silently and on phones only. The dashboard is a choice of those in Home Assistant,
-never a URL to type in, so a notification can't be made to open anything else.
+Nothing needs changing for notifications to work. Each appliance on the integration's page has settings: 
+
+- *Notify Start* and *Notify End* switches
+ - the start off and the end on by default
+- *Notify phases* switch
+  -  on by default for ovens
+- *Notify progress* switch
+  - off by default, switch on to get the percentage or ETA regularly notified
+- a choice of *Live Activity title* and of what the *Live Activity shows*
+  - Choose to have the main title be the appliance name and the programme name ("Dishwashed Intensive 70C"), or only the appliance name or programme
+  - Choose to have the 2nd line of live activity be the countdown clock or programme name
+  - Supernotify required for these options
+- *Dashboard to open* 
+  - when a notification or the Live Activity is tapped. 
+  - Can be any Home Assistant dashboard, use one for all appliances, or create a dashboard just for that appliance and hide it from the app side panel so it doesn't clutter up the ap
+
+With *Notify start* or *Notify end* off, that notification isn't sent, but the Live Activity is still opened and closed, silently and on phones only. The dashboard is a choice of those in Home Assistant, never a URL to type in, so a notification can't be made to open anything else.
 
 | Section              | What it does                                                                                 |
 | -------------------- | -------------------------------------------------------------------------------------------- |
@@ -125,9 +110,7 @@ never a URL to type in, so a notification can't be made to open anything else.
 | End message          | The same for when it finishes, such as "Dishwasher is finished". With Supernotify, also a *Reminder*, see below |
 | Notification targets | With Supernotify, *Targets* is the same choice of entities, devices, areas, floors and labels as any Supernotify notification, *Custom targets* is for those outside Home Assistant, such as e-mail addresses or phone numbers, and *Deliveries* limits notifications to those chosen. Leave them empty for Supernotify to choose. Without Supernotify, *Targets* is a choice of notify entities, and left empty means every phone with the Home Assistant app |
 
-*Live Activity shows* is the *Time remaining* by default, where the appliance reports when it will finish, or the
-*Program* in its place. The program can be the whole cycle, or a phase of it, such as a pre-heat or a pre-rinse, so
-for some appliances it says more than the time left.
+*Live Activity shows* is the *Time remaining* by default, where the appliance reports when it will finish, or the *Program* in its place. The program can be the whole cycle, or a phase of it, such as a pre-heat or a pre-rinse, so for some appliances it says more than the time left.
 
 On the Lock Screen of an iPhone the timer takes the place of the message, which is where the program otherwise goes,
 so while there's a time left to show, *Live Activity title* is *Appliance name and program* by default, such as
