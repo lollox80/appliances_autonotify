@@ -23,8 +23,11 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 @pytest.fixture(autouse=True)
 def no_live_settle():
-    """Nothing held back after the start, other than in the tests of that"""
-    with patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0):
+    """Nothing held back before or after the start, other than in the tests of that"""
+    with (
+        patch("custom_components.appliance_autonotify.watcher.LIVE_SETTLE", 0),
+        patch("custom_components.appliance_autonotify.watcher.START_SETTLE", 0),
+    ):
         yield
 
 

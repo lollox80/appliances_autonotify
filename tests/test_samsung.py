@@ -3,8 +3,10 @@ through LocalThings, as the same appliance through both"""
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
@@ -309,3 +311,36 @@ async def test_still_running_after_its_stage_said_it_was_over(hass: HomeAssistan
     for state in ("pause", "run"):
         await set_state(hass, dryer["dryer_machine_state"], state)
     assert len(calls) == count
+
+
+async def test_start_waits_for_the_program(hass: HomeAssistant) -> None:
+    """LocalThings reports the cycle under way a moment before the program chosen, as on a real cold air cycle"""
+    dryer = localthings_dryer(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(dryer["machine_state"], "idle")
+    hass.states.async_set(dryer["dryer_cycle_table_03"], "16")
+    await setup_appliance(hass, dryer["device_id"], notify_start=True, start_message="{program}")
+
+    with patch("custom_components.appliance_autonotify.watcher.START_SETTLE", 0.2):
+        hass.states.async_set(dryer["machine_state"], "active")
+        await asyncio.sleep(0.05)
+        hass.states.async_set(dryer["dryer_cycle_table_03"], "24")
+        assert calls == []
+        await asyncio.sleep(0.3)
+        await hass.async_block_till_done()
+    assert calls[0].data["message"] == "24"
+
+
+async def test_start_over_before_it_was_told(hass: HomeAssistant) -> None:
+    dryer = localthings_dryer(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(dryer["machine_state"], "idle")
+    await setup_appliance(hass, dryer["device_id"], notify_start=True)
+
+    with patch("custom_components.appliance_autonotify.watcher.START_SETTLE", 0.2):
+        hass.states.async_set(dryer["machine_state"], "active")
+        await asyncio.sleep(0.05)
+        hass.states.async_set(dryer["machine_state"], "idle")
+        await asyncio.sleep(0.3)
+        await hass.async_block_till_done()
+    assert calls == []

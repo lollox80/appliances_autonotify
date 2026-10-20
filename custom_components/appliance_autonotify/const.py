@@ -158,6 +158,9 @@ STAGES_FINISHED: Final[tuple[str, ...]] = ("finished", "finish", "wrinkle_preven
 STAGES_NONE: Final[tuple[str, ...]] = ("none", "idle")
 # seconds an appliance is left to settle before the cycle is over
 CYCLE_SETTLE: Final[float] = 10
+# seconds after the cycle starts before it's told of, since an integration may report its program and stage a moment
+# after the state of its cycle, as LocalThings does
+START_SETTLE: Final[float] = 3
 # seconds a Live Activity is left to open before anything more is sent to it, since a push sent straight after the
 # start can reach a phone ahead of it, and then be overwritten by the start, with no bar and no program
 LIVE_SETTLE: Final[float] = 5
