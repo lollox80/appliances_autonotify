@@ -237,7 +237,7 @@ class ApplianceWatcher:
             )
         else:
             data = self._live_data()
-            if self.program_in_title and "when" in data and (phase := self._phase()) and phase not in title:
+            if self.program_in_title and "when" in data and (phase := self._title_phase()) and phase not in title:
                 # with a timer there's no message on the iOS Lock Screen, so what it's doing goes beside the name
                 title = LIVE_TITLE.format(title=title, phase=phase)
                 if message == phase and (progress := self._progress()) is not None:
@@ -384,10 +384,17 @@ class ApplianceWatcher:
 
     def _phase(self) -> str | None:
         """What the appliance is doing, to say alongside a bar that already shows how far along it is"""
+        return self._stage() or self._program()
+
+    def _stage(self) -> str | None:
+        """What the appliance is doing within its cycle, where its integration tells"""
         stage = self._state(STAGE_KEY)
-        if stage is not None and stage.state not in STAGES_NONE:
-            return self._translated(stage)
-        return self._program()
+        return self._translated(stage) if stage is not None and stage.state not in STAGES_NONE else None
+
+    def _title_phase(self) -> str | None:
+        """What goes beside the name in the title of a Live Activity with a timer: the program, where the stage is
+        what the Live Activity says, or else whatever the Live Activity would say"""
+        return self._program() if self._stage() is not None else self._phase()
 
     def _program_state(self) -> State | None:
         """The program under way, or failing that the one chosen, where the appliance reports either"""
