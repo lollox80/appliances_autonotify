@@ -11,19 +11,21 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import discovery_flow
 from homeassistant.helpers import entity_registry as er
+from homeassistant.loader import IntegrationNotLoaded, async_get_loaded_integration
 
 from .const import (
     CONF_AUTO_DISCOVER,
     CONF_POWER_ENTITY,
-    CYCLE_KEYS,
+    CYCLE_KEY,
     CYCLE_TYPES,
     DERIVED_POWER_PLATFORMS,
     DOMAIN,
-    PREFERRED_PLATFORMS,
+    ENTITY_DOMAINS,
+    ROLE_KEY_PREFIXES,
+    ROLE_KEYS,
+    STATES_RUN,
     TYPE_DISCOVERY,
     TYPE_VACUUM,
-    VENDOR_KEY_PREFIXES,
-    VENDOR_KEYS,
 )
 from .words import name_type
 
@@ -52,75 +54,102 @@ class PowerMonitor:
     name: str
 
 
-def vendor_key(entity: er.RegistryEntry) -> str:
-    """The translation key of an entity, as Home Connect has it where its platform names it otherwise"""
-    key = entity.translation_key or ""
-    if key in (keys := VENDOR_KEYS.get(entity.platform, {})):
-        return keys[key]
-    return next((k for prefix, k in VENDOR_KEY_PREFIXES.get(entity.platform, {}).items() if key.startswith(prefix)), key)
+def role_key(entity: er.RegistryEntry) -> str | None:
+    """What an entity does, as the translation key Home Connect gives an entity that does the same"""
+    key = entity.translation_key
+    if key is None or key in ROLE_KEYS:
+        return ROLE_KEYS.get(key or "")
+    return next((role for prefix, role in ROLE_KEY_PREFIXES.items() if key.startswith(prefix)), key)
 
 
-def device_with(device_registry: dr.DeviceRegistry, identifier: tuple[str, str]) -> dr.DeviceEntry | None:
-    """The device with the identifier, of whichever config entry, by the lookup of the Home Assistant release"""
-    if hasattr(device_registry, "async_get_devices"):
-        # from Home Assistant 2026.10, when identifiers stopped being unique across config entries
-        return next(iter(device_registry.async_get_devices(identifiers={identifier})), None)
-    return device_registry.async_get_device(identifiers={identifier})
-
-
-def companion_ids(identifiers: set[tuple[str, str]], platform: str) -> set[tuple[str, str]]:
-    """The identifiers another platform would have for the same appliance, by the same id within its own platform"""
-    return {(platform, value) for _, value in identifiers}
+def is_cycle_entity(entity: er.RegistryEntry) -> bool:
+    """A sensor of the state of an appliance's cycle, of whichever integration, whose states include one of a cycle
+    under way, so not a sensor of something else that happens to have the same name"""
+    if entity.disabled or entity.device_id is None or entity.domain != SENSOR_DOMAIN or role_key(entity) != CYCLE_KEY:
+        return False
+    options = (entity.capabilities or {}).get("options") or []
+    return any(option in STATES_RUN for option in options)
 
 
 @callback
-def preferred_device(hass: HomeAssistant, identifiers: set[tuple[str, str]]) -> dr.DeviceEntry | None:
-    """The device of the platform preferred to that of the identifiers for the same appliance, where there is one"""
+def cycle_entities(hass: HomeAssistant) -> dict[str, er.RegistryEntry]:
+    """The cycle state entity of every device that has one, by device"""
+    found: dict[str, er.RegistryEntry] = {}
+    for entity in er.async_get(hass).entities.values():
+        if is_cycle_entity(entity) and entity.device_id is not None:
+            found.setdefault(entity.device_id, entity)
+    return found
+
+
+@callback
+def companions(hass: HomeAssistant, device_id: str, cycles: dict[str, er.RegistryEntry] | None = None) -> list[str]:
+    """Other devices with a cycle that are the same appliance through another integration, by an id they have in
+    common, as a Samsung appliance's own id is to both SmartThings and LocalThings"""
+    cycles = cycle_entities(hass) if cycles is None else cycles
     device_registry = dr.async_get(hass)
-    for domain, _ in identifiers:
-        if (preferred := PREFERRED_PLATFORMS.get(domain)) is None:
+    device = device_registry.async_get(device_id)
+    if device is None:
+        return []
+    domains = {domain for domain, _ in device.identifiers}
+    ids = {value for _, value in device.identifiers}
+    found: list[str] = []
+    for other_id in cycles:
+        other = device_registry.async_get(other_id) if other_id != device_id else None
+        if other is not None and any(value in ids and domain not in domains for domain, value in other.identifiers):
+            found.append(other_id)
+    return found
+
+
+@callback
+def preference(hass: HomeAssistant, cycle: er.RegistryEntry) -> tuple[bool, int, str]:
+    """How much an appliance's device is preferred to another for the same appliance: one its integration reaches on
+    the local network over one reached through the vendor's cloud, then the one that tells more of its cycle"""
+    try:
+        iot_class = async_get_loaded_integration(hass, cycle.platform).iot_class or ""
+    except IntegrationNotLoaded:
+        iot_class = ""
+    entities = er.async_entries_for_device(er.async_get(hass), cycle.device_id or "")
+    roles = {key for entity in entities if not entity.disabled and (key := role_key(entity)) in ENTITY_DOMAINS}
+    # and of two alike, always the same one
+    return iot_class.startswith("local"), len(roles), cycle.device_id or ""
+
+
+@callback
+def _chosen_devices(hass: HomeAssistant) -> tuple[dict[str, er.RegistryEntry], set[str]]:
+    """The cycle state entity of each appliance to offer, by device, and the devices passed over for another one
+    of the same appliance"""
+    cycles = cycle_entities(hass)
+    configured = {entry.unique_id for entry in hass.config_entries.async_entries(DOMAIN, include_ignore=True)}
+    chosen: dict[str, er.RegistryEntry] = {}
+    passed_over: set[str] = set()
+    for device_id, cycle in cycles.items():
+        # the same appliance through two integrations is set up once, through the one preferred, unless it
+        # already is through the other
+        others = [] if device_id in configured else companions(hass, device_id, cycles)
+        if others and (
+            any(other in configured for other in others)
+            or max([device_id, *others], key=lambda d: preference(hass, cycles[d])) != device_id
+        ):
+            passed_over.add(device_id)
             continue
-        for identifier in companion_ids(identifiers, preferred):
-            if (other := device_with(device_registry, identifier)) is not None:
-                return other
-    return None
-
-
-@callback
-def fallback_device(hass: HomeAssistant, identifiers: set[tuple[str, str]]) -> dr.DeviceEntry | None:
-    """The device of a platform that of the identifiers is preferred to, for the same appliance, where there is one"""
-    device_registry = dr.async_get(hass)
-    for domain, _ in identifiers:
-        for other_platform, preferred in PREFERRED_PLATFORMS.items():
-            if preferred != domain:
-                continue
-            for identifier in companion_ids(identifiers, other_platform):
-                if (other := device_with(device_registry, identifier)) is not None:
-                    return other
-    return None
+        chosen[device_id] = cycle
+    return chosen, passed_over
 
 
 @callback
 def find_appliances(hass: HomeAssistant) -> list[Appliance]:
-    """Devices of the known platforms that have a cycle state entity, and robot vacuums of any make"""
-    entity_registry = er.async_get(hass)
+    """Devices with a cycle state entity, of whichever integration, one for each appliance, and robot vacuums of any
+    make"""
     device_registry = dr.async_get(hass)
     found: dict[str, Appliance] = {}
-    for entity in entity_registry.entities.values():
-        if entity.device_id is None or entity.disabled:
+    for device_id, cycle in _chosen_devices(hass)[0].items():
+        if (device := device_registry.async_get(device_id)) is not None:
+            found[device_id] = Appliance(device_id, device.name_by_user or device.name or cycle.entity_id)
+    for entity in er.async_get(hass).entities.values():
+        if entity.domain != TYPE_VACUUM or entity.disabled or entity.device_id is None:
             continue
-        if entity.domain == TYPE_VACUUM:
-            kind: str | None = TYPE_VACUUM
-        elif entity.translation_key is not None and CYCLE_KEYS.get(entity.platform) == vendor_key(entity):
-            kind = None
-        else:
-            continue
-        device = device_registry.async_get(entity.device_id)
-        if device is not None and kind is None and preferred_device(hass, device.identifiers) is not None:
-            # the same appliance through a platform preferred to this one, so set up through that instead
-            continue
-        if device is not None:
-            found[device.id] = Appliance(device.id, device.name_by_user or device.name or entity.entity_id, kind)
+        if (device := device_registry.async_get(entity.device_id)) is not None:
+            found[device.id] = Appliance(device.id, device.name_by_user or device.name or entity.entity_id, TYPE_VACUUM)
     return list(found.values())
 
 
@@ -192,6 +221,12 @@ def auto_discovery(hass: HomeAssistant) -> bool:
 def async_discover(hass: HomeAssistant) -> None:
     """Set up every appliance found, or with automatic discovery off, offer each to be added"""
     source = SOURCE_IMPORT if auto_discovery(hass) else SOURCE_INTEGRATION_DISCOVERY
+    # an appliance offered through one integration, and now found through another preferred to it, is offered
+    # through that one instead
+    passed_over = _chosen_devices(hass)[1]
+    for flow in hass.config_entries.flow.async_progress_by_handler(DOMAIN):
+        if flow["context"].get("unique_id") in passed_over:
+            hass.config_entries.flow.async_abort(flow["flow_id"])
     for appliance in find_appliances(hass):
         # appliances already configured, ignored or in progress are dropped by the flow's unique id
         discovery_flow.async_create_flow(
@@ -224,7 +259,9 @@ def async_start_discovery(hass: HomeAssistant) -> None:
         if entity is None:
             return
         created = event.data["action"] == "create"
-        if (created and (entity.platform in CYCLE_KEYS or entity.domain == TYPE_VACUUM)) or is_power_sensor(entity):
+        # any entity of an appliance, which may make one through another integration the one to prefer
+        appliance_entity = role_key(entity) == CYCLE_KEY or role_key(entity) in ENTITY_DOMAINS
+        if (created and (appliance_entity or entity.domain == TYPE_VACUUM)) or is_power_sensor(entity):
             async_discover(hass)
 
     @callback

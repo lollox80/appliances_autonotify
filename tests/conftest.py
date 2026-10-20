@@ -51,6 +51,10 @@ OVEN_ENTITIES = {
 }
 
 
+# the states Home Connect lists for the state of an appliance's cycle
+OPERATION_STATES = ["inactive", "ready", "delayedstart", "run", "pause", "actionrequired", "finished", "error", "aborting"]
+
+
 def add_appliance(
     hass: HomeAssistant,
     name: str = "Dishwasher",
@@ -80,7 +84,11 @@ def add_appliance(
             device_id=device.id,
             config_entry=source,
             translation_key=key,
-            capabilities={"options": programs} if domain == "select" and programs else None,
+            capabilities={"options": programs}
+            if domain == "select" and programs
+            else {"options": OPERATION_STATES}
+            if key == "operation_state"
+            else None,
         ).entity_id
     return FakeAppliance(
         device.id,

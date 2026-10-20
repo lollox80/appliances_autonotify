@@ -14,6 +14,7 @@ from .test_watcher import ANDROID, ended, pass_time, set_state
 
 ICON = "mdi:printer-3d"
 # as ha-bambulab names them, by translation key
+PRINT_STATES = ["failed", "finish", "idle", "init", "offline", "pause", "prepare", "running", "slicing", "unknown"]
 PRINTER_ENTITIES = ("print_status", "print_progress", "end_time", "remaining_time", "stage", "subtask_name", "current_layer")
 
 
@@ -39,6 +40,8 @@ def add_printer(hass: HomeAssistant, name: str = "A1") -> dict[str, str]:
             device_id=device.id,
             config_entry=source,
             translation_key=key,
+            # the states ha-bambulab lists for the print
+            capabilities={"options": PRINT_STATES} if key == "print_status" else None,
         ).entity_id
     return entities
 
