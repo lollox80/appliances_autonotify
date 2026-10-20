@@ -704,6 +704,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.over_by_stage: bool = False
         # started, and waiting a moment for the program and stage to be reported before that's told
         self.starting: bool = False
+        self.appliance_type: str | None = None
 
     @callback
     def async_start(self) -> None:
@@ -738,7 +739,7 @@ class HomeConnectWatcher(ApplianceWatcher):
                 if key is not None and not entity.disabled and ENTITY_DOMAINS.get(key) == entity.domain:
                     self.fallback_ids.setdefault(key, entity.entity_id)
         # the type of appliance isn't kept anywhere to be read, but its programs are named for it
-        appliance_type = (
+        self.appliance_type = appliance_type = (
             PLATFORM_TYPES.get(platform)
             or next((kind for prefix, kind in APPLIANCE_TYPES.items() if any(p.startswith(prefix) for p in programs)), None)
             # or, for a platform with several types, the names of its entities
@@ -826,7 +827,13 @@ class HomeConnectWatcher(ApplianceWatcher):
 
     def _title_phase(self) -> str | None:
         # a 3D printer is named alone, since the name of a print is often that of its settings, and long
-        return None if STAGE_KEY in self.entity_ids else super()._title_phase()
+        if self.appliance_type in PLATFORM_TYPES.values():
+            return None
+        # where the stage is what the Live Activity says, the program goes beside the name
+        stage = self._state(STAGE_KEY)
+        if stage is not None and stage.state not in STAGES_NONE:
+            return self._program()
+        return super()._title_phase()
 
     async def _stage_changed(self, event: Event[EventStateChangedData]) -> None:
         """A 3D printer moving on, from heating its bed to levelling it to printing, with no progress to show it, or

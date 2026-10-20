@@ -199,6 +199,11 @@ async def test_local_dryer_with_progress_and_program(hass: HomeAssistant) -> Non
     await set_state(hass, dryer["progress_percentage"], "40")
     assert calls[-1].data["extra_data"]["progress"] == 40
     assert calls[-1].data["message"] == "drying"
+    # with a countdown, the program beside the name, and what it's doing below
+    await set_state(hass, dryer["finish_time"], "2026-10-20T09:41:00+00:00")
+    await set_state(hass, dryer["progress_percentage"], "55")
+    assert calls[-1].data["title"] == "Samsung Dryer · 16"
+    assert calls[-1].data["message"] == "drying"
 
     # idle is the end once it has stayed so
     await set_state(hass, dryer["machine_state"], "idle")
