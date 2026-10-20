@@ -14,9 +14,7 @@ When a dishwasher, washing machine, oven or other appliance starts a cycle, you'
 shows a [Live Activity](https://companion.home-assistant.io/docs/notifications/live-activities) with progress
 and time remaining while it runs, and you're told when it finishes.
 
-This is an early version to try with real appliances. It supports Bosch, Neff and Siemens appliances connected
-with the Home Assistant [Home Connect](https://www.home-assistant.io/integrations/home_connect/) integration, and
-Samsung washers, dryers and dishwashers through [SmartThings](https://www.home-assistant.io/integrations/smartthings/)
+This is an early version to try with real appliances. It supports Bosch, Neff and Siemens appliances connected with the Home Assistant [Home Connect](https://www.home-assistant.io/integrations/home_connect/) integration, robot vacuums using the [Vacuum Integration](https://www.home-assistant.io/integrations/vacuum/) and Samsung washers, dryers and dishwashers through [SmartThings](https://www.home-assistant.io/integrations/smartthings/)
 or [LocalThings](https://github.com/mbillow/localthings), in English only. Any other appliance can be added by hand if it has a power monitor, such as a smart plug.
 
 ## What You Need

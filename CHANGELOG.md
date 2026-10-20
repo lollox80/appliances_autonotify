@@ -3,7 +3,7 @@ title: What's New
 ---
 # 0.10.0
 ## ✨ Enhancements
-- **Robot Vacuums** supported, for any manufacturer with a consistent Home Assistant vacuum integration. Tested with Ecovacs and Roborock.
+- **Robot Vacuums** supported, for any manufacturer with a Home Assistant [Vacuum Integration](https://www.home-assistant.io/integrations/vacuum/). Tested with Ecovacs and Roborock.
 - Support **Samsung** washers, dryers and dishwashers, through **SmartThings** or **LocalThings**
  - SmartThings and LocalThings each make a device for the same appliance, both carrying Samsung's id in their identifiers. Devices with an identifier value in common, both with a cycle, are one appliance with the local version picked over the cloud one where available
 
