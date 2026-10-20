@@ -51,7 +51,7 @@ async def test_vacuum_is_set_up_automatically(hass: HomeAssistant) -> None:
 
     entry = hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, device_id)
     assert entry is not None
-    assert entry.data == {"device_id": device_id, "type": "vacuum"}
+    assert entry.data == {"device_id": device_id, "type": "vacuum", "dashboard_found": True}
     assert entry.state is ConfigEntryState.LOADED
 
     # and one added later is set up as it appears
@@ -59,7 +59,7 @@ async def test_vacuum_is_set_up_automatically(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     other = hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, other_id)
     assert other is not None
-    assert other.data == {"device_id": other_id, "type": "vacuum"}
+    assert other.data == {"device_id": other_id, "type": "vacuum", "dashboard_found": True}
 
 
 async def test_vacuum_offered_keeps_its_type(hass: HomeAssistant) -> None:

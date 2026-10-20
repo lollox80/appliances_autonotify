@@ -39,6 +39,9 @@ LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM)
 CONF_PROGRAM_IN_TITLE: Final[str] = "program_in_title"
 # path of the dashboard opened by a tap on a notification, the app is opened where it was last if there's none
 CONF_DASHBOARD: Final[str] = "dashboard"
+# whether a dashboard named for the appliance has been looked for, which is done once, as it's first set up, so
+# whatever is chosen after is left alone
+CONF_DASHBOARD_FOUND: Final[str] = "dashboard_found"
 LOVELACE_DOMAIN: Final[str] = "lovelace"
 # the dashboard Home Assistant starts with has no path of its own in the list of them
 DEFAULT_DASHBOARD: Final[str] = "lovelace"

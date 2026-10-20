@@ -1,6 +1,13 @@
 ---
 title: What's New
 ---
+# 0.11.0
+## ✨ Enhancements
+- Device Usage
+ - Each appliance has a device of its own, listed under it on the integration's page with its model and area
+ - Shown as a **Linked device** of the appliance's device from Home Connect, SmartThings, LocalThings or the vacuum's integration, each with that integration's icon, as the same hardware is between integrations such as UniFi and ONVIF.
+ - A power monitored appliance's device is instead *connected via* the smart plug, which is other hardware
+
 # 0.10.0
 ## ✨ Enhancements
 - **Robot Vacuums** supported, for any manufacturer with a Home Assistant [Vacuum Integration](https://www.home-assistant.io/integrations/vacuum/). Tested with Ecovacs and Roborock.
@@ -8,6 +15,7 @@ title: What's New
  - SmartThings and LocalThings each make a device for the same appliance, both carrying Samsung's id in their identifiers. Devices with an identifier value in common, both with a cycle, are one appliance with the local version picked over the cloud one where available
 
 - *Live Activity title* choice in the settings of each appliance, in place of the *Program in title* switch: *Appliance name and program*, the default, *Program only* or *Appliance name only*. An appliance with *Program in title* switched off is now *Appliance name only*
+- *Dashboard to open* set when an appliance is added, to a dashboard named for the appliance, such as "Dishwasher", or for its type, such as "Washing Machine" for a washer. Appliances already set up are left as they are
 - *Live Activity shows* choice of *Time remaining*, the default, or *Program* in its place, for appliances whose program says more than the time left, such as one that reports each phase of the cycle as a program of its own
 
 # 0.9.0

@@ -72,7 +72,7 @@
                     "notify_start": "Send a notification when the appliance starts. When off, the Live Activity is still opened, silently and on phones only.",
                     "notify_end": "Send a notification when the appliance finishes. When off, the Live Activity is still closed.",
                     "notify_phase": "Send a notification when a phase of the cycle is over, such as an oven getting up to heat. When off, it is only shown on the Live Activity.",
-                    "dashboard": "Opened when a notification or the Live Activity is tapped. Leave empty to open the app where it was.",
+                    "dashboard": "Opened when a notification or the Live Activity is tapped. Leave empty to open the app where it was. Set to a dashboard named for the appliance or its type, such as \"Dishwasher\" or \"Washing Machine\", if there was one when the appliance was added.",
                     "notify_progress": "Send a notification every 10% of the cycle. When off, progress is only shown on the progress bar of the Live Activity, which is updated silently.",
                     "live_title": "What the Live Activity is titled with. The program is useful beside the name when the time left takes the place of the message, as it does on an iPhone's Lock Screen. Choose the name only if the program names are too long to fit, or if the appliance is always on the same program.",
                     "live_detail": "Show the time left, where the appliance reports when it will finish, or the program in its place. The program can be the whole cycle, or a phase of it, such as a pre-rinse."

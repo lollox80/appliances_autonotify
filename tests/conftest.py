@@ -136,8 +136,9 @@ def mock_supernotify(hass: HomeAssistant) -> list[ServiceCall]:
 
 
 async def setup_watcher(
-    hass: HomeAssistant, appliance: FakeAppliance, options: dict[str, Any] | None = None
+    hass: HomeAssistant, appliance: FakeAppliance, options: dict[str, Any] | None = None, minor_version: int = 3
 ) -> MockConfigEntry:
+    """An appliance as just added, or as saved by an earlier version with a lower minor version"""
     assert await async_setup_component(hass, "notify", {})
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -145,6 +146,7 @@ async def setup_watcher(
         unique_id=appliance.device_id,
         data={CONF_DEVICE_ID: appliance.device_id},
         options=options or {},
+        minor_version=minor_version,
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

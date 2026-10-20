@@ -15,7 +15,14 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.appliance_autonotify.const import ANDROID_CHANNEL, CYCLE_SETTLE, DOMAIN, PREHEAT_SETTLE
 
-from .conftest import DISHWASHER_PROGRAMS, add_appliance, mock_dashboards, mock_supernotify, setup_watcher
+from .conftest import (
+    DISHWASHER_PROGRAMS,
+    add_appliance,
+    mock_dashboard,
+    mock_dashboards,
+    mock_supernotify,
+    setup_watcher,
+)
 
 # the Android only fields that every Live Activity notification carries
 ANDROID = {"channel": ANDROID_CHANNEL, "importance": "high", "sticky": True}
@@ -241,8 +248,8 @@ async def test_program_is_kept_out_of_the_title_when_switched_off(hass: HomeAssi
     hass.states.async_set(appliance.program, "Eco")
     hass.states.async_set(appliance.finish_time, "2026-10-06T21:44:16+00:00")
     # as saved before the title was a choice, and taken as the name alone
-    entry = await setup_watcher(hass, appliance, {"program_in_title": False})
-    assert (entry.minor_version, dict(entry.options)) == (2, {"live_title": "name"})
+    entry = await setup_watcher(hass, appliance, {"program_in_title": False}, minor_version=1)
+    assert (entry.minor_version, dict(entry.options)) == (3, {"live_title": "name"})
 
     await set_state(hass, appliance.cycle, "run")
     await set_state(hass, appliance.progress, "5")
@@ -622,6 +629,55 @@ async def test_tap_opens_chosen_dashboard(hass: HomeAssistant) -> None:
         [tap],
     ]
     assert not any(key in call.data.get("extra_data", {}) for call in calls for key in ("url", "clickAction"))
+
+
+async def test_dashboard_named_for_the_appliance_is_chosen_when_set_up(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    mock_dashboards(hass)
+    mock_dashboard(hass, "dashboard-dish-washer", "Kitchen Appliances")
+    entry = await setup_watcher(hass, appliance)
+
+    # by its path, and kept as if chosen, so it's there in the settings to change or clear
+    assert entry.options == {"dashboard": "dashboard-dish-washer"}
+    await set_state(hass, appliance.cycle, "run")
+    assert {"level": "notification", "uri": "/dashboard-dish-washer"} in calls[-1].data["actions"]
+
+
+async def test_dashboard_named_for_the_type_is_chosen_when_set_up(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass, name="Bosch Serie 6", programs=DISHWASHER_PROGRAMS)
+    mock_dashboards(hass)
+    mock_dashboard(hass, "dashboard-dishes", "Dishwasher")
+    mock_dashboard(hass, "dashboard-laundry", "Washing Machine")
+    # a dishwasher by its programs, though not by its name
+    entry = await setup_watcher(hass, appliance)
+    assert entry.options == {"dashboard": "dashboard-dishes"}
+
+
+async def test_no_dashboard_is_chosen_when_several_match(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    mock_dashboards(hass)
+    mock_dashboard(hass, "dashboard-dishes", "Dishwasher")
+    mock_dashboard(hass, "dashboard-dishwasher", "Kitchen")
+    entry = await setup_watcher(hass, appliance)
+    assert entry.options == {}
+    assert entry.data["dashboard_found"] is True
+
+
+async def test_dashboard_is_only_looked_for_once(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    mock_dashboards(hass)
+    mock_dashboard(hass, "dashboard-dishwasher", "Dishwasher")
+    # set up before dashboards were looked for, with none chosen
+    old = await setup_watcher(hass, appliance, minor_version=2)
+    assert old.options == {}
+
+    # nor again once cleared, or changed, in the settings
+    entry = await setup_watcher(hass, add_appliance(hass, ha_id="BOSCH-2"))
+    assert entry.options == {"dashboard": "dashboard-dishwasher"}
+    hass.config_entries.async_update_entry(entry, options={})
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    assert entry.options == {}
 
 
 async def test_tap_goes_nowhere_but_a_dashboard(hass: HomeAssistant) -> None:

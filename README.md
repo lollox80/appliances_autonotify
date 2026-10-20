@@ -84,6 +84,17 @@ A power monitor named for a washing machine, dryer, dishwasher or oven, in Engli
 Raise the grace period for appliances that pause mid-cycle, such as a washing machine soaking. Set a minimum running time, 60 seconds or so, for appliances that draw a little power when their door is opened or a button pressed, such as a
 dishwasher whose light comes on, so that isn't notified as a cycle. Time above the threshold adds up across drop outs shorter than the grace period, so a cycle that pauses as it starts still counts.
 
+### The Appliance's Device
+
+Each appliance gets a device of its own, listed under it on the integration's page with its model and area. It
+shares the identifiers of the device the appliance already has, from Home Connect, SmartThings, LocalThings or the
+vacuum's integration, so each shows the other under *Linked devices*, with the integration's icon, as Home Assistant
+does for the same hardware through two integrations, such as a camera through UniFi and ONVIF. Appliances are still
+found by what their entities do, not by their integration, and the device is only where the appliance is shown.
+
+A power monitored appliance's device is *connected via* the smart plug, since the plug is other hardware, and has no
+device to link to if its power sensor has none.
+
 ## Settings
 
 Nothing needs changing for notifications to work. Each appliance on the integration's page has settings: 
@@ -101,6 +112,7 @@ Nothing needs changing for notifications to work. Each appliance on the integrat
 - *Dashboard to open* 
   - when a notification or the Live Activity is tapped. 
   - Can be any Home Assistant dashboard, use one for all appliances, or create a dashboard just for that appliance and hide it from the app side panel so it doesn't clutter up the ap
+  - Set when the appliance is added to a dashboard named for it, such as "Dishwasher", or for its type, such as "Washing Machine" for a washer, by its title or its path, so long as there's only one that matches. Change it or clear it like any other setting, it isn't set again
 
 With *Notify start* or *Notify end* off, that notification isn't sent, but the Live Activity is still opened and closed, silently and on phones only. The dashboard is a choice of those in Home Assistant, never a URL to type in, so a notification can't be made to open anything else.
 

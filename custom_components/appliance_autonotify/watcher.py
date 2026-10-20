@@ -155,6 +155,8 @@ class ApplianceWatcher:
         self.tag: str = f"appliance_{entry.entry_id}"
         # the end has a tag of its own, so it can be cleared or told again without touching a Live Activity
         self.end_tag: str = f"{self.tag}_end"
+        # the type of appliance, such as `washer`, from its name until the appliance itself says
+        self.appliance_type: str | None = name_type(hass, self.name)
         self.icon: str = self._name_icon()
         self.cycle_entity_id: str | None = None
         # by translation key, whichever of those made use of the appliance has
@@ -598,6 +600,7 @@ class HomeConnectWatcher(ApplianceWatcher):
             (kind for prefix, kind in KEY_TYPE_PREFIXES.items() if any(k.startswith(prefix) for k in translation_keys)),
             None,
         )
+        self.appliance_type = appliance_type or name_type(self.hass, self.name)
         self.icon = TYPE_ICONS.get(appliance_type or "", self._name_icon())
         # the one phase there is to know of is an oven warming up, Home Connect reporting none for anything else
         if CAVITY_TEMPERATURE_KEY in self.entity_ids and TARGET_TEMPERATURE_KEY in self.entity_ids:
@@ -979,7 +982,8 @@ class VacuumWatcher(ApplianceWatcher):
         )
         if self.cycle_entity_id is None:
             raise ConfigEntryNotReady(f"No vacuum entity found for {self.name}")
-        self.icon = TYPE_ICONS["cleaning_robot"]
+        self.appliance_type = "cleaning_robot"
+        self.icon = TYPE_ICONS[self.appliance_type]
         # a cleaning under way at startup still has its Live Activity closed when it ends
         state = self.hass.states.get(self.cycle_entity_id)
         self.running = state is not None and state.state not in (*VACUUM_DONE, VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)

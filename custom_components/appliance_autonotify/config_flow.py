@@ -208,7 +208,8 @@ def power_schema(with_name: bool) -> vol.Schema:
 class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     # 2 has the choice of what the title of a Live Activity names in place of the switch for the program in it
-    MINOR_VERSION = 2
+    # 3 has a dashboard looked for as an appliance is first set up
+    MINOR_VERSION = 3
 
     def __init__(self) -> None:
         self._device_id: str | None = None

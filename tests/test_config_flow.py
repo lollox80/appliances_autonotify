@@ -560,6 +560,23 @@ async def test_dashboard_is_chosen_from_those_there_are(hass: HomeAssistant) -> 
         await hass.config_entries.options.async_configure(result["flow_id"], choice | {"dashboard": "https://example.com"})
 
 
+async def test_dashboard_chosen_when_set_up_can_be_cleared(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    mock_supernotify(hass)
+    mock_dashboards(hass)
+    mock_dashboard(hass, "dashboard-dishwasher", "Dishwasher")
+    entry = await setup_watcher(hass, appliance)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert suggested(result)["dashboard"] == "dashboard-dishwasher"
+    await hass.config_entries.options.async_configure(result["flow_id"], {"start": {}, "end": {}, "notify": {}})
+    await hass.async_block_till_done()
+    # and stays cleared, through the reload
+    assert "dashboard" not in entry.options
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert "dashboard" not in suggested(result)
+
+
 async def test_dashboards_with_the_same_title_are_told_apart(hass: HomeAssistant) -> None:
     appliance = add_appliance(hass)
     mock_supernotify(hass)
