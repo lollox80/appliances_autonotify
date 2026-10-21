@@ -45,6 +45,7 @@ from .const import (
     ANDROID_BUTTONS,
     ANDROID_CHANNEL,
     APPLIANCE_TYPES,
+    CAMERA_DOMAIN,
     CAVITY_TEMPERATURE_KEY,
     CONF_CUSTOM_TARGET,
     CONF_DASHBOARD,
@@ -52,17 +53,20 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_LIVE_COUNT,
     CONF_LIVE_DETAIL,
     CONF_LIVE_TITLE,
     CONF_MAINTENANCE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
+    CONF_NOTIFY_PROBLEM,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
+    CONF_SNAPSHOT,
     CONF_START_MESSAGE,
     CONF_START_TITLE,
     CONF_SWITCH_ENTITY,
@@ -85,11 +89,23 @@ from .const import (
     DURATION_PLACEHOLDER,
     ENERGY_PLACEHOLDER,
     ENTITY_DOMAINS,
+    FAILED_MESSAGES,
     FAST_PREHEAT_KEY,
     FAST_PREHEAT_PHASE,
+    FAULT_SEVERITY_ATTRIBUTE,
+    FAULT_TEXT_ATTRIBUTE,
+    FAULTS_KEY,
+    FAULTS_SERIOUS,
     FINISH_DRIFT,
     FINISH_TIME_KEY,
     KEY_TYPE_PREFIXES,
+    LAYER_CHIP,
+    LAYER_KEY,
+    LAYER_MESSAGES,
+    LAYER_REFRESH,
+    LAYERS_KEY,
+    LIVE_COUNT_LAYERS,
+    LIVE_COUNT_PERCENT,
     LIVE_DETAIL_PROGRAM,
     LIVE_DETAIL_TIME,
     LIVE_SETTLE,
@@ -103,6 +119,7 @@ from .const import (
     MOBILE_PUSH_TRANSPORT,
     NAME_PLACEHOLDER,
     OVEN_MESSAGE,
+    PAUSE_KEY,
     PHASES_NOTIFIED,
     PLATFORM_TYPES,
     PREHEAT_FINISHED_KEYS,
@@ -110,6 +127,9 @@ from .const import (
     PREHEAT_PHASE,
     PREHEAT_SETTLE,
     PREHEATED_MESSAGE,
+    PROBLEM_KEY,
+    PROBLEM_SETTLE,
+    PROBLEM_TEXT_ATTRIBUTE,
     PROGRAM_KEYS,
     PROGRAM_PLACEHOLDER,
     PROGRESS_CHIP,
@@ -120,6 +140,7 @@ from .const import (
     PROGRESS_NOTIFY_STEP,
     PROGRESS_STEP,
     REMAINING_KEY,
+    RESUME_KEY,
     STAGE_KEY,
     STAGES_FINISHED,
     STAGES_NONE,
@@ -249,6 +270,11 @@ class ApplianceWatcher:
         self.maintenance_items: list[MaintenanceItem] = []
         # tracking offered on the end notification of the cycle just over
         self._offering: bool = False
+        # the appliance's own camera, for a picture with its end and its faults
+        self.camera_entity_id: str | None = None
+        self.snapshot: bool = entry.options.get(CONF_SNAPSHOT, True)
+        # what the appliance was last said to be doing, kept while it reports nothing in particular part way through
+        self._last_stage: str | None = None
 
     @callback
     def async_start(self) -> None:
@@ -373,6 +399,7 @@ class ApplianceWatcher:
 
     async def _started(self, context: Context) -> None:
         self.program_kept = False
+        self._last_stage = None
         self._cycle_began()
         # nothing yet to tell of this one
         self.totals = CycleTotals()
@@ -567,7 +594,47 @@ class ApplianceWatcher:
             spoken_message=self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE, speak=True, title=title),
             actions=self._end_actions() + self._tap_actions(),
             extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag},
+            # what it came to, the once, a reminder being only to say it's still waiting
+            media=None if reminder else self._media(),
         )
+
+    def _media(self) -> dict[str, str] | None:
+        """A picture from the appliance's own camera, for Supernotify to take as it sends, where it has one that's
+        working, and it hasn't been turned off"""
+        if not self.snapshot or self._known(self.camera_entity_id) is None:
+            return None
+        return {"camera_entity_id": str(self.camera_entity_id)}
+
+    async def _help(self, detail: str | None, context: Context, failed: bool = False) -> None:
+        """A fault that has stopped the appliance, saying what it is where the appliance says, as it's stopped part
+        way through for someone to see to, or stopped for good"""
+        language = self.hass.config.language.split("-")[0]
+        if failed:
+            messages = FAILED_MESSAGES.get(language, FAILED_MESSAGES["en"])
+            headline = messages.get(self.appliance_type or "", messages[""])
+        else:
+            headline = STUCK_MESSAGES.get(language, STUCK_MESSAGES["en"]).replace(NAME_PLACEHOLDER, self.name)
+        message = f"{headline}\n{detail}" if detail else headline
+        title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
+        async with self._sending:
+            if not supernotify_available(self.hass):
+                await self._send_message(message, title, context)
+                return
+            await self._supernotify(
+                message,
+                title,
+                context,
+                resend=True,
+                # what the fault is may be long, and is for reading
+                spoken_message=spoken(f"{title}\n{headline}" if title not in headline else headline),
+                extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.problem_tag},
+                actions=self._tap_actions(),
+                media=self._media(),
+            )
+
+    @property
+    def problem_tag(self) -> str:
+        return f"{self.tag}_problem"
 
     def _end_actions(self) -> list[dict[str, str]]:
         buttons = [ACTION_FINISHED, ACTION_REMIND] + ([ACTION_SWITCH_OFF] if self._switchable() else [])
@@ -711,9 +778,13 @@ class ApplianceWatcher:
         return self._stage() or self._program()
 
     def _stage(self) -> str | None:
-        """What the appliance is doing within its cycle, where its integration tells"""
+        """What the appliance is doing within its cycle, where its integration tells, or what it last told while it
+        says nothing in particular, as a 3D printer does in the moments before it finishes"""
         stage = self._state(STAGE_KEY)
-        return self._translated(stage) if stage is not None and stage.state not in STAGES_NONE else None
+        if stage is not None and stage.state not in STAGES_NONE:
+            self._last_stage = self._translated(stage)
+            return self._last_stage
+        return self._last_stage if self.running else None
 
     def _title_phase(self) -> str | None:
         """What goes beside the name in the title of a Live Activity with a timer: the program, where the stage is
@@ -776,8 +847,11 @@ class ApplianceWatcher:
         elif progress is not None:
             # the Android status bar chip shows this in place of the time left, so only with no time to show, and
             # short, since a longer text leaves the chip with only its icon
-            data["critical_text"] = PROGRESS_CHIP.format(progress=progress)
+            data["critical_text"] = self._chip(progress)
         return data
+
+    def _chip(self, progress: int) -> str:
+        return PROGRESS_CHIP.format(progress=progress)
 
     def _paused(self) -> bool:
         return False
@@ -823,8 +897,11 @@ class ApplianceWatcher:
         extra_data: dict[str, Any] | None = None,
         actions: list[dict[str, str]] | None = None,
         spoken_message: str | None = None,
+        media: dict[str, str] | None = None,
     ) -> None:
         data: dict[str, Any] = {"message": message, "title": title}
+        if media:
+            data["media"] = media
         if spoken_message and spoken_message.rstrip(".") != message.rstrip(".") and not mobile_only:
             # what Alexa or a speaker says, with no emoji and the numbers in words
             data["spoken_message"] = spoken_message
@@ -895,6 +972,14 @@ class HomeConnectWatcher(ApplianceWatcher):
         # started, and waiting a moment for the program and stage to be reported before that's told
         self.starting: bool = False
         self.appliance_type: str | None = None
+        self.notify_problem: bool = entry.options.get(CONF_NOTIFY_PROBLEM, True)
+        self.live_count: str = entry.options.get(CONF_LIVE_COUNT, LIVE_COUNT_PERCENT)
+        # a fault told of while paused, the once until it's going again, however often it drops off the network
+        self._helped: bool = False
+        # when the cycle was given up, for a fault that may be reported a moment after, as what gave it up
+        self._abandoned_at: datetime | None = None
+        # when the Live Activity was last brought up to date for a layer
+        self._layer_shown: datetime | None = None
 
     @callback
     def async_start(self) -> None:
@@ -907,6 +992,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         translation_keys: list[str] = []
         entity_registry = er.async_get(self.hass)
         for entity in er.async_entries_for_device(entity_registry, device_id):
+            if entity.domain == CAMERA_DOMAIN and not entity.disabled:
+                self.camera_entity_id = self.camera_entity_id or entity.entity_id
             key = role_key(entity)
             if key is None or entity.disabled:
                 continue
@@ -961,6 +1048,8 @@ class HomeConnectWatcher(ApplianceWatcher):
             ((REMAINING_KEY, FINISH_TIME_KEY), self._finish_changed),
             ((CAVITY_TEMPERATURE_KEY, TARGET_TEMPERATURE_KEY), self._temperature_changed),
             (PREHEAT_FINISHED_KEYS, self._preheat_finished),
+            ((PROBLEM_KEY,), self._problem_changed),
+            ((LAYER_KEY,) if self.live_count == LIVE_COUNT_LAYERS else (), self._layer_changed),
         ):
             if entity_ids := [ids[key] for ids in (self.entity_ids, self.fallback_ids) for key in keys if key in ids]:
                 self.entry.async_on_unload(async_track_state_change_event(self.hass, entity_ids, listener))
@@ -997,24 +1086,155 @@ class HomeConnectWatcher(ApplianceWatcher):
         cavity = self._state(CAVITY_TEMPERATURE_KEY)
         return cavity.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "°") if cavity is not None else "°"
 
-    def _progress_message(self, progress: int) -> str:
-        return self._preheat_message() or super()._progress_message(progress)
-
     def _phase(self) -> str | None:
         if self._paused() and (cycle := self._cycle_state()) is not None:
             return self._translated(cycle)
         if message := self._preheat_message():
             return message
         program, current = super()._phase(), self._number(CAVITY_TEMPERATURE_KEY)
+        if (layer := self._layer_text()) is not None:
+            # what it's doing, and how far it's got with it
+            return f"{program} · {layer}" if program else layer[:1].upper() + layer[1:]
         if program is None or current is None:
             return program
         return OVEN_MESSAGE.format(program=program, current=f"{current:g}", unit=self._temperature_unit())
+
+    def _progress_message(self, progress: int) -> str:
+        if message := self._preheat_message():
+            return message
+        if (layer := self._layer_text()) is not None:
+            return layer[:1].upper() + layer[1:]
+        return super()._progress_message(progress)
 
     def _title_phase(self) -> str | None:
         # a 3D printer is named alone, since the name of a print is often that of its settings, and long
         if self.appliance_type in PLATFORM_TYPES.values():
             return None
         return super()._title_phase()
+
+    @property
+    def has_problem(self) -> bool:
+        """Whether the appliance reports the fault that stops it"""
+        return PROBLEM_KEY in self.entity_ids
+
+    @property
+    def has_layers(self) -> bool:
+        """Whether the appliance counts its cycle in layers, as a 3D printer does"""
+        return LAYER_KEY in self.entity_ids and LAYERS_KEY in self.entity_ids
+
+    def _layers(self) -> tuple[int, int] | None:
+        """The layer it's on, and of how many, counted that way where chosen, once it's on the first"""
+        if self.live_count != LIVE_COUNT_LAYERS:
+            return None
+        layer, layers = self._number(LAYER_KEY), self._number(LAYERS_KEY)
+        if layer is None or layers is None or layer < 1 or layers < 1:
+            return None
+        return int(layer), int(layers)
+
+    def _layer_text(self) -> str | None:
+        if (layers := self._layers()) is None:
+            return None
+        text = LAYER_MESSAGES.get(self.hass.config.language.split("-")[0], LAYER_MESSAGES["en"])
+        return text.format(layer=layers[0], layers=layers[1])
+
+    async def _layer_changed(self, event: Event[EventStateChangedData]) -> None:
+        """Another layer, shown no more often than mobile platforms allow, a small print going through its layers
+        quicker than they'll show them"""
+        now = dt_util.utcnow()
+        if not self.running or self._paused() or self._layers() is None or not supernotify_available(self.hass):
+            return
+        if self._layer_shown is not None and (now - self._layer_shown).total_seconds() < LAYER_REFRESH:
+            return
+        self._layer_shown = now
+        await self._live_refresh(event.context)
+
+    def _chip(self, progress: int) -> str:
+        if (layers := self._layers()) is not None:
+            return LAYER_CHIP.format(layer=layers[0], layers=layers[1])
+        return super()._chip(progress)
+
+    def _live_actions(self) -> list[dict[str, str]]:
+        """Pause while it runs, and carry on once paused, where the appliance has buttons for them"""
+        state = self._cycle_state()
+        if not self.running or state is None:
+            return []
+        if state.state in STATES_PAUSED:
+            return self._buttons([ACTION_RESUME]) if RESUME_KEY in self.entity_ids else []
+        if state.state in STATES_RUN and PAUSE_KEY in self.entity_ids:
+            return self._buttons([ACTION_PAUSE])
+        return []
+
+    async def _action_pressed(self, event: Event) -> None:
+        buttons = {ACTION_PAUSE: PAUSE_KEY, ACTION_RESUME: RESUME_KEY}
+        action = str(event.data.get("action") or "")
+        key = next((k for button, k in buttons.items() if action == f"{button}{self.entry.entry_id}"), None)
+        if key is None:
+            await super()._action_pressed(event)
+            return
+        if not self.running or (entity_id := self.entity_ids.get(key)) is None:
+            # a button left on a Live Activity of a cycle since over
+            return
+        try:
+            await self.hass.services.async_call(
+                "button", "press", {ATTR_ENTITY_ID: entity_id}, blocking=True, context=event.context
+            )
+        except HomeAssistantError:
+            _LOGGER.exception("APPLIANCES %s of %s failed", key, self.name)
+
+    def _problem(self) -> str | None:
+        """What the fault is, where the appliance reports one that's stopped it, else None. Said by the integration in
+        its own words, or failing that the first serious one of its others, and empty if neither says"""
+        problem = self._state(PROBLEM_KEY)
+        if problem is None or problem.state != STATE_ON:
+            return None
+        text = str(problem.attributes.get(PROBLEM_TEXT_ATTRIBUTE) or "").strip()
+        if text and text.lower() != "unknown":
+            return text
+        faults = self._state(FAULTS_KEY)
+        if faults is not None and faults.state == STATE_ON:
+            index = 1
+            while (fault := faults.attributes.get(FAULT_TEXT_ATTRIBUTE.format(index=index))) is not None:
+                severity = str(faults.attributes.get(FAULT_SEVERITY_ATTRIBUTE.format(index=index)) or "").lower()
+                if severity in FAULTS_SERIOUS and str(fault).strip():
+                    return str(fault).strip()
+                index += 1
+        return ""
+
+    async def _problem_changed(self, event: Event[EventStateChangedData]) -> None:
+        """A fault reported a moment after the cycle state it caused"""
+        await self._problem_check(event.context)
+
+    async def _problem_check(self, context: Context) -> None:
+        """Tell of a fault that has stopped the appliance, whether it reached the cycle state first or the fault"""
+        if not self.notify_problem or (detail := self._problem()) is None:
+            return
+        cycle = self._cycle_state()
+        if self.running and cycle is not None and cycle.state in STATES_PAUSED:
+            if not self._helped:
+                self._helped = True
+                await self._help(detail or None, context)
+        elif (
+            not self.running
+            and self._abandoned_at is not None
+            and (dt_util.utcnow() - self._abandoned_at).total_seconds() <= PROBLEM_SETTLE
+        ):
+            # once only, for the cycle given up
+            self._abandoned_at = None
+            await self._help(detail or None, context, failed=True)
+
+    async def _problem_cleared(self, context: Context) -> None:
+        """Going again after a fault was told of, so its notification is out of date"""
+        if not self._helped:
+            return
+        self._helped = False
+        if supernotify_available(self.hass):
+            await self._supernotify(
+                self.name,
+                self.name,
+                context,
+                mobile_only=True,
+                extra_data={"mobile_push_notification_tag": self.problem_tag, "mobile_push_clear_notification": True},
+            )
 
     async def _finish_changed(self, event: Event[EventStateChangedData]) -> None:
         """The finish time moved on from the one counted down to, by a slower print, say, or one paused a while"""
@@ -1137,6 +1357,7 @@ class HomeConnectWatcher(ApplianceWatcher):
                 if self.shown_paused:
                     # going again, so counting down again
                     await self._live_refresh(context)
+                await self._problem_cleared(context)
                 return
             if self.starting:
                 return
@@ -1151,6 +1372,8 @@ class HomeConnectWatcher(ApplianceWatcher):
                 # over, or started by another report, while it waited
                 return
             self.running = True
+            self._helped = False
+            self._abandoned_at = None
             # unless it's hot already, from not long having been off
             temperatures = self._temperatures()
             self.preheated = temperatures is not None and temperatures[0] >= temperatures[1]
@@ -1165,13 +1388,23 @@ class HomeConnectWatcher(ApplianceWatcher):
             return
         elif state in STATES_PAUSED:
             await self._live_refresh(context)
+            # stopped by a fault for someone to see to, unless it's only been paused
+            await self._problem_check(context)
         elif state in STATES_SETTLING:
             if self._cancel_end is None:
                 self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, partial(self._settled, context))
         elif state in STATES_FINISHED:
             await self._cycle_over(True, context)
         elif state in STATES_ABANDONED:
+            # given up by a fault, told of with what it was, or stopped by hand, which needs no telling, the fault
+            # read as it's given up, since closing its Live Activity may take a while, and one reported a moment
+            # after still taken for what gave it up
+            self._abandoned_at = dt_util.utcnow()
+            fault = self._problem() if self.notify_problem else None
             await self._cycle_over(False, context)
+            if fault is not None:
+                self._abandoned_at = None
+                await self._help(fault or None, context, failed=True)
         # anything else, such as `unavailable` while the vendor cloud is away, leaves the cycle as it was
 
     async def _fallback_over(self, context: Context) -> None:
@@ -1198,7 +1431,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         if new_state.state in STAGES_FINISHED:
             await self._over_by_stage(event.context)
             return
-        if not supernotify_available(self.hass):
+        if new_state.state in STAGES_NONE or not supernotify_available(self.hass):
+            # nothing in particular, as a 3D printer says in the moments before it finishes, leaves what it was doing
             return
         async with self._sending:
             if self.running and (message := self._phase()):
@@ -1219,6 +1453,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         self._forget_preheated()
         self.running = False
         await self._ended(finished, context)
+        # whatever it needed help with is over with it
+        await self._problem_cleared(context)
 
 
 class PowerWatcher(ApplianceWatcher):

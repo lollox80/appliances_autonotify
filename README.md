@@ -74,8 +74,18 @@ A Bambu Lab printer set up with [ha-bambulab](https://github.com/greghesp/ha-bam
 other appliances, with each print as the cycle. It starts as the printer gets ready, heating and levelling its bed, and
 the Live Activity tells what it's doing at each stage, counting down to the end from the time left, which stops while
 the print is paused. The name of the print fills in `{program}`, but isn't put in the title. A finished print is told as
-for any appliance, a failed or cancelled one only has its Live Activity closed. The printer going offline for a while
-leaves the print as it was.
+for any appliance. The printer going offline for a while leaves the print as it was.
+
+When a fault pauses the print, as a clogged nozzle does, a notification says the printer needs help, with the fault in
+the printer's own words. Paused by hand isn't a fault, and the notification is cleared once it's printing again. A
+print given up by a fault is told as failed, with the fault, while one cancelled by hand only has its Live Activity
+closed. Both can be turned off with *Notify faults*.
+
+The Live Activity has a *Pause* button while printing and *Resume* while paused, but none to stop the print, which a
+mistaken tap would lose. It can count layers, as *layer 45/201*, in place of the percentage, with *Count progress in*.
+
+Where the printer has a camera, a picture from it goes with the end and with a fault, taken by Supernotify as it sends,
+unless *Picture from its camera* is turned off. The same goes for any appliance with a camera of its own.
 
 ### Power Monitored Appliances
 

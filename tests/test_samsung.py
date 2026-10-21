@@ -366,3 +366,22 @@ async def test_reminder_names_the_program_of_the_cycle_over(hass: HomeAssistant)
     await set_state(hass, dryer["dryer_cycle_table_03"], "16")
     await pass_time(hass, 60)
     assert calls[-1].data["message"] == "24"
+
+
+async def test_stage_of_nothing_part_way_through_leaves_what_it_was_doing(hass: HomeAssistant) -> None:
+    dryer = localthings_dryer(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(dryer["machine_state"], "idle")
+    await setup_appliance(hass, dryer["device_id"])
+    hass.states.async_set(dryer["progress"], "drying")
+    await set_state(hass, dryer["machine_state"], "active")
+    await pass_time(hass, 10)
+    await set_state(hass, dryer["progress_percentage"], "40")
+    assert calls[-1].data["message"] == "drying"
+    told = len(calls)
+    for stage in ("none", "unavailable"):
+        await set_state(hass, dryer["progress"], stage)
+        assert len(calls) == told
+        await set_state(hass, dryer["progress_percentage"], str(45 + told))
+        assert calls[-1].data["message"] == "drying"
+        told = len(calls)

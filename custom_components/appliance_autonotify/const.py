@@ -35,6 +35,15 @@ CONF_LIVE_DETAIL: Final[str] = "live_detail"
 LIVE_DETAIL_TIME: Final[str] = "time_remaining"
 LIVE_DETAIL_PROGRAM: Final[str] = "program"
 LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM)
+# how a Live Activity counts how far along it is, by percentage, or for a 3D printer by layer
+CONF_LIVE_COUNT: Final[str] = "live_count"
+LIVE_COUNT_PERCENT: Final[str] = "percent"
+LIVE_COUNT_LAYERS: Final[str] = "layers"
+LIVE_COUNTS: Final[tuple[str, ...]] = (LIVE_COUNT_PERCENT, LIVE_COUNT_LAYERS)
+# whether an appliance that reports a fault is told of when one stops it, for one that has a sensor of its faults
+CONF_NOTIFY_PROBLEM: Final[str] = "notify_problem"
+# whether a picture from the appliance's own camera goes with its end and its faults, for one with a camera
+CONF_SNAPSHOT: Final[str] = "snapshot"
 # the switch the title choice took over from, off being the name only
 CONF_PROGRAM_IN_TITLE: Final[str] = "program_in_title"
 # path of the dashboard opened by a tap on a notification, the app is opened where it was last if there's none
@@ -191,6 +200,19 @@ PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
 # a robot vacuum that has stopped where it is, stuck or lifted, and won't go on by itself, by the language of Home
 # Assistant as for the buttons, English for any other
 STUCK_MESSAGES: Final[dict[str, str]] = {"en": "{name} needs help", "it": "{name} ha bisogno di aiuto"}
+# a cycle stopped for good by a fault, by type of appliance, then for any other
+FAILED_MESSAGES: Final[dict[str, dict[str, str]]] = {
+    "en": {"3d_printer": "Print failed", "": "Stopped by a fault"},
+    "it": {"3d_printer": "Stampa fallita", "": "Interrotto per un guasto"},
+}
+# what a 3D printer counts its print in, with how far it's got and of how many
+LAYER_MESSAGES: Final[dict[str, str]] = {"en": "layer {layer}/{layers}", "it": "strato {layer}/{layers}"}
+# the Android status bar chip, short, as for the percentage
+LAYER_CHIP: Final[str] = "{layer}/{layers}"
+# seconds a fault is given to be reported, as it may come a moment before or after the cycle state that it stopped it
+PROBLEM_SETTLE: Final[float] = 5
+# seconds between Live Activity updates for the layer, since mobile platforms throttle frequent ones
+LAYER_REFRESH: Final[float] = 60
 # the title of a Live Activity with a timer, which iOS shows on the Lock Screen in place of the message
 LIVE_TITLE: Final[str] = "{title} · {phase}"
 # what an oven up to heat is doing, and how hot it is
@@ -237,6 +259,23 @@ PROGRAM_KEYS: Final[tuple[str, ...]] = (*SELECTED_PROGRAM_KEYS, TASK_KEY)
 # what the appliance is doing within its cycle, such as drying then cooling, or a 3D printer heating its bed then
 # printing, which Home Connect doesn't report
 STAGE_KEY: Final[str] = "stage"
+# a fault that has stopped the cycle, a problem binary sensor whose attributes say what it is, as `error`, and others
+# that only say what's wrong, with how serious each is, as HMS errors do
+PROBLEM_KEY: Final[str] = "print_error"
+FAULTS_KEY: Final[str] = "hms_errors"
+PROBLEM_TEXT_ATTRIBUTE: Final[str] = "error"
+# the faults, numbered from 1, as `1-Error` and `1-Severity`, and the severities worth telling of
+FAULT_TEXT_ATTRIBUTE: Final[str] = "{index}-Error"
+FAULT_SEVERITY_ATTRIBUTE: Final[str] = "{index}-Severity"
+FAULTS_SERIOUS: Final[tuple[str, ...]] = ("serious", "fatal")
+# the layer a 3D printer is on, and of how many
+LAYER_KEY: Final[str] = "current_layer"
+LAYERS_KEY: Final[str] = "total_layers"
+# buttons to pause and carry on, the Live Activity offering whichever there's a use for, but never one to stop, since
+# pressed by mistake that loses the cycle
+PAUSE_KEY: Final[str] = "pause"
+RESUME_KEY: Final[str] = "resume"
+CAMERA_DOMAIN: Final[str] = "camera"
 # the same entities as other integrations name them, whichever integration they come from, since it's what an
 # entity does that matters, and which entities an appliance has together
 ROLE_KEYS: Final[dict[str, str]] = {
@@ -276,6 +315,12 @@ ENTITY_DOMAINS: Final[dict[str, str]] = {
     CAVITY_TEMPERATURE_KEY: "sensor",
     **dict.fromkeys(PREHEAT_FINISHED_KEYS, "sensor"),
     FAST_PREHEAT_KEY: "switch",
+    PROBLEM_KEY: "binary_sensor",
+    FAULTS_KEY: "binary_sensor",
+    LAYER_KEY: "sensor",
+    LAYERS_KEY: "sensor",
+    PAUSE_KEY: "button",
+    RESUME_KEY: "button",
 }
 # the type of appliance of a platform that has only the one
 PLATFORM_TYPES: Final[dict[str, str]] = {"bambu_lab": "3d_printer"}

@@ -67,7 +67,10 @@
                     "dashboard": "Dashboard da aprire",
                     "live_title": "Titolo della Live Activity",
                     "live_detail": "La Live Activity mostra",
-                    "maintenance": "Segui la manutenzione"
+                    "maintenance": "Segui la manutenzione",
+                    "notify_problem": "Notifica i guasti",
+                    "snapshot": "Foto dalla sua telecamera",
+                    "live_count": "Conta l'avanzamento in"
                 },
                 "data_description": {
                     "notify_start": "Invia una notifica quando l'elettrodomestico parte. Se disattivato, la Live Activity viene comunque aperta, senza suono e solo sui telefoni.",
@@ -77,7 +80,10 @@
                     "notify_progress": "Invia una notifica ogni 10% del ciclo. Se disattivato, l'avanzamento compare solo nella barra della Live Activity, aggiornata senza suono.",
                     "live_title": "Il titolo della Live Activity. Il programma accanto al nome è utile quando il tempo residuo prende il posto del messaggio, come nella schermata di blocco dell'iPhone. Scegli solo il nome se i nomi dei programmi sono troppo lunghi, o se l'elettrodomestico usa sempre lo stesso programma.",
                     "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure il programma al suo posto. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio.",
-                    "maintenance": "Conta i cicli, e quanta vita resta alle parti di cui l'apparecchio la riporta, e mette ciò che va fatto nella lista Manutenzione elettrodomestici, con una notifica quando scade. Se è spento viene proposto una volta sulla notifica di fine."
+                    "maintenance": "Conta i cicli, e quanta vita resta alle parti di cui l'apparecchio la riporta, e mette ciò che va fatto nella lista Manutenzione elettrodomestici, con una notifica quando scade. Se è spento viene proposto una volta sulla notifica di fine.",
+                    "notify_problem": "Invia una notifica quando un guasto ferma l'elettrodomestico, dicendo qual è: in pausa a metà, in attesa che qualcuno intervenga, oppure fermo del tutto. Una pausa fatta a mano non è un guasto.",
+                    "snapshot": "Invia una foto dalla telecamera dell'elettrodomestico con la fine e con un guasto.",
+                    "live_count": "Come la Live Activity conta l'avanzamento: in percentuale, oppure per strati, come strato 45/201."
                 },
                 "sections": {
                     "start": {
@@ -180,6 +186,12 @@
             "options": {
                 "time_remaining": "Tempo residuo",
                 "program": "Programma"
+            }
+        },
+        "live_count": {
+            "options": {
+                "percent": "Percentuale",
+                "layers": "Strati"
             }
         }
     },

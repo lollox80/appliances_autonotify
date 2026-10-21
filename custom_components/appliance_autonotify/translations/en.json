@@ -67,7 +67,10 @@
                     "dashboard": "Dashboard to open",
                     "live_title": "Live Activity title",
                     "live_detail": "Live Activity shows",
-                    "maintenance": "Track maintenance"
+                    "maintenance": "Track maintenance",
+                    "notify_problem": "Notify faults",
+                    "snapshot": "Picture from its camera",
+                    "live_count": "Count progress in"
                 },
                 "data_description": {
                     "notify_start": "Send a notification when the appliance starts. When off, the Live Activity is still opened, silently and on phones only.",
@@ -77,7 +80,10 @@
                     "notify_progress": "Send a notification every 10% of the cycle. When off, progress is only shown on the progress bar of the Live Activity, which is updated silently.",
                     "live_title": "What the Live Activity is titled with. The program is useful beside the name when the time left takes the place of the message, as it does on an iPhone's Lock Screen. Choose the name only if the program names are too long to fit, or if the appliance is always on the same program.",
                     "live_detail": "Show the time left, where the appliance reports when it will finish, or the program in its place. The program can be the whole cycle, or a phase of it, such as a pre-rinse.",
-                    "maintenance": "Keep count of the cycles, and of how much life the parts the appliance reports on have left, and put whatever is due on the Appliance maintenance to-do list, with a notification as it falls due. Offered once on the end notification if left off."
+                    "maintenance": "Keep count of the cycles, and of how much life the parts the appliance reports on have left, and put whatever is due on the Appliance maintenance to-do list, with a notification as it falls due. Offered once on the end notification if left off.",
+                    "notify_problem": "Send a notification when a fault stops the appliance, saying what it is: paused part way through, waiting for someone to see to it, or stopped for good. Paused by hand isn't a fault.",
+                    "snapshot": "Send a picture from the appliance's own camera with the end and with a fault.",
+                    "live_count": "How the Live Activity counts how far along it is: by percentage, or by layer, as layer 45/201."
                 },
                 "sections": {
                     "start": {
@@ -180,6 +186,12 @@
             "options": {
                 "time_remaining": "Time remaining",
                 "program": "Program"
+            }
+        },
+        "live_count": {
+            "options": {
+                "percent": "Percentage",
+                "layers": "Layers"
             }
         }
     },

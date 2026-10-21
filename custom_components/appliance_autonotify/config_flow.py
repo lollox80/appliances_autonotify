@@ -33,6 +33,7 @@ from .const import (
     CONF_END_MESSAGE,
     CONF_END_TITLE,
     CONF_GRACE_PERIOD,
+    CONF_LIVE_COUNT,
     CONF_LIVE_DETAIL,
     CONF_LIVE_TITLE,
     CONF_MAINTENANCE,
@@ -40,11 +41,13 @@ from .const import (
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
     CONF_NOTIFY_PHASE,
+    CONF_NOTIFY_PROBLEM,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
     CONF_POWER_ENTITY,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
+    CONF_SNAPSHOT,
     CONF_START_MESSAGE,
     CONF_START_TITLE,
     CONF_SWITCH_ENTITY,
@@ -64,6 +67,8 @@ from .const import (
     DOMAIN,
     DURATION_PLACEHOLDER,
     ENERGY_PLACEHOLDER,
+    LIVE_COUNT_PERCENT,
+    LIVE_COUNTS,
     LIVE_DETAIL_TIME,
     LIVE_DETAILS,
     LIVE_TITLE_NAME_PROGRAM,
@@ -97,7 +102,14 @@ DEFAULT_CHOICES: dict[str, bool | str] = {
     CONF_NOTIFY_PROGRESS: False,
     CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM,
     CONF_LIVE_DETAIL: LIVE_DETAIL_TIME,
+    CONF_LIVE_COUNT: LIVE_COUNT_PERCENT,
+    CONF_NOTIFY_PROBLEM: True,
+    CONF_SNAPSHOT: True,
 }
+
+# settings on the form only for an appliance that has what they're for, known only while it's running, so kept as
+# they were when the form is shown without them
+SHOWN_IF_RUNNING: tuple[str, ...] = (CONF_NOTIFY_PROBLEM, CONF_SNAPSHOT, CONF_LIVE_COUNT)
 
 DEFAULT_TEXTS: dict[str, str] = {
     CONF_START_TITLE: DEFAULT_TITLE,
@@ -120,6 +132,9 @@ async def settings_schema(
     progress: bool = True,
     phase: bool | None = None,
     maintenance: dict[str, int] | None = None,
+    problem: bool = False,
+    camera: bool = False,
+    layers: bool = False,
 ) -> vol.Schema:
     """The settings of an appliance, with maintenance for one with something to maintain, and the cycles between each
     of the items for its type, as `maintenance` has them"""
@@ -127,6 +142,12 @@ async def settings_schema(
         vol.Required(CONF_NOTIFY_START, default=False): BooleanSelector(),
         vol.Required(CONF_NOTIFY_END, default=True): BooleanSelector(),
     }
+    if problem:
+        # only for an appliance that reports the fault stopping it
+        fields[vol.Required(CONF_NOTIFY_PROBLEM, default=True)] = BooleanSelector()
+    if camera and supernotify_available(hass):
+        # Supernotify takes the picture as it sends
+        fields[vol.Required(CONF_SNAPSHOT, default=True)] = BooleanSelector()
     if maintenance is not None:
         fields[vol.Required(CONF_MAINTENANCE, default=False)] = BooleanSelector()
     if phase is not None:
@@ -134,6 +155,12 @@ async def settings_schema(
         fields[vol.Required(CONF_NOTIFY_PHASE, default=phase)] = BooleanSelector()
     if progress:
         fields[vol.Required(CONF_NOTIFY_PROGRESS, default=False)] = BooleanSelector()
+        if layers:
+            fields[vol.Required(CONF_LIVE_COUNT, default=LIVE_COUNT_PERCENT)] = SelectSelector(
+                SelectSelectorConfig(
+                    options=list(LIVE_COUNTS), mode=SelectSelectorMode.DROPDOWN, translation_key=CONF_LIVE_COUNT
+                )
+            )
         if supernotify_available(hass):
             # only a Live Activity has a title that changes as the cycle goes on, and a timer
             for key, options, default in (
@@ -328,9 +355,18 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
+def field_names(schema: vol.Schema) -> set[str]:
+    """The settings on a form, whether in a section or not"""
+    names: set[str] = set()
+    for name, field in schema.schema.items():
+        names.update(str(key) for key in field.schema.schema) if isinstance(field, section) else names.add(str(name))
+    return names
+
+
 class AppliancesOptionsFlow(OptionsFlowWithReload):
     def __init__(self) -> None:
         self._settings: dict[str, Any] = {}
+        self._shown: set[str] = set()
 
     def _name(self) -> str:
         # the name notifications are sent with, which follows the device rather than the entry's title
@@ -389,6 +425,11 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 # an item at 0 is one left out, not one left as it comes
                 if (value or value is False or (key in usual and value == 0)) and value != unset.get(key)
             }
+            settings = {
+                key: self.config_entry.options[key]
+                for key in SHOWN_IF_RUNNING
+                if key not in self._shown and key in self.config_entry.options
+            } | settings
             if self._maintenance() is None:
                 # not on the form, so kept as it was
                 settings = {
@@ -398,13 +439,19 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 self._settings = settings
                 return await self.async_step_power()
             return self.async_create_entry(data=settings)
+        # what this appliance has to offer, as found when it was last set up
+        watcher = getattr(self.config_entry, "runtime_data", None)
         # a power monitored appliance has no progress to report, nor has a robot vacuum
         schema = await settings_schema(
             self.hass,
             progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
             phase=self._phase_default(),
             maintenance=self._maintenance(),
+            problem=getattr(watcher, "has_problem", False),
+            camera=getattr(watcher, "camera_entity_id", None) is not None,
+            layers=getattr(watcher, "has_layers", False),
         )
+        self._shown = field_names(schema)
         shown = dict(self.config_entry.options)
         if shown.get(CONF_DASHBOARD) not in dashboards(self.hass):
             # removed since it was chosen
