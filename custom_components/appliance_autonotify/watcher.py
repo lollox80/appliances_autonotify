@@ -7,10 +7,13 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import (
     ATTR_ENTITY_ID,
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_DEVICE_ID,
+    PERCENTAGE,
     STATE_ON,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -118,8 +121,13 @@ from .const import (
     VACUUM_BLIP_KIND,
     VACUUM_BLIP_SETTLE,
     VACUUM_CLEANING,
+    VACUUM_COMPLETE_KIND,
+    VACUUM_COMPLETE_SETTLE,
     VACUUM_DONE,
     VACUUM_ERROR,
+    VACUUM_HELD_KIND,
+    VACUUM_HELD_SETTLE,
+    VACUUM_JOB_LEAD,
     VACUUM_MIDWAY_KIND,
     VACUUM_MIDWAY_SETTLE,
     VACUUM_PAUSED,
@@ -969,6 +977,16 @@ class VacuumWatcher(ApplianceWatcher):
         self._pending: str | tuple[str, ...] | None = None
         # not yet known whether it was cleaning when Home Assistant started, until it says something telling
         self._unsure = False
+        # how long it stays back on its dock before its cleaning is over, where its own progress doesn't say
+        self.settle: float = entry.options.get(CONF_GRACE_PERIOD, VACUUM_SETTLE)
+        # a percentage on the vacuum, other than its battery, has climbed to 100 during this cleaning, as its progress
+        # does where its integration reports one, which a consumable's life left never does, or its own running sensor
+        # has gone off
+        self._complete = False
+        # a running sensor of the vacuum's that came on as it set off and is on still, so its cleaning isn't over
+        self._job: str | None = None
+        self._runnings: list[str] = []
+        self._set_off: datetime | None = None
 
     @callback
     def async_start(self) -> None:
@@ -991,7 +1009,79 @@ class VacuumWatcher(ApplianceWatcher):
         # next tells whether a cleaning was under way
         self._unsure = state is None or state.state in (VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
         self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._activity_changed))
+        entities = er.async_entries_for_device(er.async_get(self.hass), device_id)
+        percentages = [
+            e.entity_id
+            for e in entities
+            if e.domain == "sensor"
+            and e.unit_of_measurement == PERCENTAGE
+            and (e.device_class or e.original_device_class) != SensorDeviceClass.BATTERY
+        ]
+        if percentages:
+            self.entry.async_on_unload(async_track_state_change_event(self.hass, percentages, self._percentage_changed))
+        self._runnings = [
+            e.entity_id
+            for e in entities
+            if e.domain == "binary_sensor" and (e.device_class or e.original_device_class) == BinarySensorDeviceClass.RUNNING
+        ]
+        if self._runnings:
+            self.entry.async_on_unload(async_track_state_change_event(self.hass, self._runnings, self._running_changed))
+            if self.running:
+                self._job = self._running_now(None)
         self.entry.async_on_unload(self._keep_running)
+
+    def _running_now(self, since: datetime | None) -> str | None:
+        """Whichever of its running sensors is on as it sets off, having come on with it where that's known"""
+        for entity_id in self._runnings:
+            state = self.hass.states.get(entity_id)
+            if (
+                state is not None
+                and state.state == STATE_ON
+                and (since is None or (since - state.last_changed).total_seconds() <= VACUUM_JOB_LEAD)
+            ):
+                return entity_id
+        return None
+
+    async def _running_changed(self, event: Event[EventStateChangedData]) -> None:
+        new_state = event.data["new_state"]
+        if not self.running or new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return
+        entity_id = event.data["entity_id"]
+        if new_state.state == STATE_ON:
+            if (
+                self._job is None
+                and self._set_off is not None
+                and (new_state.last_changed - self._set_off).total_seconds() <= VACUUM_JOB_LEAD
+            ):
+                self._job = entity_id
+            return
+        if entity_id != self._job:
+            return
+        _LOGGER.debug("APPLIANCES %s vacuum %s went off", self.name, entity_id)
+        self._job = None
+        self._complete = True
+        activity = self._known(self.cycle_entity_id)
+        if activity is not None and activity.state in VACUUM_DONE:
+            # already back, and now done by its own account
+            self._wait(self._settled, VACUUM_COMPLETE_KIND, event.context, VACUUM_COMPLETE_SETTLE)
+
+    async def _percentage_changed(self, event: Event[EventStateChangedData]) -> None:
+        new_state, old_state = event.data["new_state"], event.data["old_state"]
+        try:
+            value = float(new_state.state) if new_state is not None else None
+            before = float(old_state.state) if old_state is not None else None
+        except ValueError:
+            return
+        if value is None or not self.running:
+            return
+        if value < 100:
+            self._complete = False
+        elif before is not None and before < 100 and not self._complete:
+            _LOGGER.debug("APPLIANCES %s vacuum %s reached 100%%", self.name, event.data["entity_id"])
+            self._complete = True
+            if self._pending in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+                # already back, and now done by its own account
+                self._wait(self._settled, VACUUM_COMPLETE_KIND, event.context, VACUUM_COMPLETE_SETTLE)
 
     @callback
     def _keep_running(self) -> None:
@@ -1014,15 +1104,27 @@ class VacuumWatcher(ApplianceWatcher):
             if not self.running and state in (VACUUM_CLEANING, VACUUM_PAUSED, VACUUM_RETURNING):
                 # cleaning since before Home Assistant started, so already told, and its end still to tell
                 self.running = True
+                self._job = self._running_now(None)
                 return
         if not self.running:
             if state == VACUUM_CLEANING:
                 self.running = True
+                self._complete = False
+                self._set_off = new_state.last_changed
+                self._job = self._running_now(self._set_off)
                 await self._started(event.context)
             return
         old_state = event.data["old_state"]
         if state in VACUUM_DONE:
-            if old_state is not None and old_state.state == VACUUM_CLEANING:
+            if self._job is not None:
+                # back, but with its cleaning not over by its own account, as when it recharges to carry on
+                if self._pending != VACUUM_HELD_KIND:
+                    self._wait(self._settled, VACUUM_HELD_KIND, event.context, VACUUM_HELD_SETTLE)
+            elif self._complete:
+                # back with its cleaning done by its own account, so nothing to set off again for
+                if self._pending != VACUUM_COMPLETE_KIND:
+                    self._wait(self._settled, VACUUM_COMPLETE_KIND, event.context, VACUUM_COMPLETE_SETTLE)
+            elif old_state is not None and old_state.state == VACUUM_CLEANING:
                 if (new_state.last_changed - old_state.last_changed).total_seconds() < VACUUM_BLIP:
                     # back within a moment of setting off, which some integrations report as a vacuum leaves its dock
                     # and then keep to while it cleans, so only believed if nothing more is heard for a long while
@@ -1034,13 +1136,18 @@ class VacuumWatcher(ApplianceWatcher):
                     self._wait(self._settled, VACUUM_MIDWAY_KIND, event.context, VACUUM_MIDWAY_SETTLE)
             elif self._pending not in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
                 # over only once it has stayed back
-                self._wait(self._settled, VACUUM_DONE, event.context)
+                self._wait(self._settled, VACUUM_DONE, event.context, self.settle)
         elif state == VACUUM_ERROR:
             # stuck only if it stays so, since some integrations report a past error again on reconnecting, while
             # the vacuum carries on, and an error once back on its dock is for its own app to tell
             if self._pending is None:
                 self._wait(self._stuck_for_good, VACUUM_ERROR, event.context)
-        elif state == VACUUM_PAUSED and self._pending in (VACUUM_DONE, VACUUM_MIDWAY_KIND):
+        elif state == VACUUM_PAUSED and self._pending in (
+            VACUUM_DONE,
+            VACUUM_MIDWAY_KIND,
+            VACUUM_COMPLETE_KIND,
+            VACUUM_HELD_KIND,
+        ):
             # paused on its dock, which some integrations report once one is back, isn't setting off again
             return
         else:

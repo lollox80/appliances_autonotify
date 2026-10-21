@@ -1,12 +1,20 @@
 ---
 title: What's New
 ---
+# 0.12.0
+## ✨ Enhancements
+- Robot Vacuums
+ - Finished 30 seconds after docking, rather than 10 minutes, where the vacuum reports its own progress reaching 100%, as Roborock does
+ - Kept as one cleaning through a recharge part way through, and finished 30 seconds after docking, where the vacuum has a sensor for whether it's cleaning, as Roborock's *Cleaning* is
+ - *Wait on the dock* setting, under *End message*, for how long a vacuum must stay docked before its cleaning is over otherwise, 10 minutes by default
+ 
 # 0.11.0
 ## ✨ Enhancements
 - Device Usage
  - Each appliance has a device of its own, listed under it on the integration's page with its model and area
  - Shown as a **Linked device** of the appliance's device from Home Connect, SmartThings, LocalThings or the vacuum's integration, each with that integration's icon, as the same hardware is between integrations such as UniFi and ONVIF.
  - A power monitored appliance's device is instead *connected via* the smart plug, which is other hardware
+
 
 # 0.10.0
 ## ✨ Enhancements

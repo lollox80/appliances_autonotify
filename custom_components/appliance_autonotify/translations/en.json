@@ -93,11 +93,13 @@
                             "end_title": "Title",
                             "end_message": "Message",
                             "reminder": "Reminder",
-                            "reminder_repeats": "Reminder repeats"
+                            "reminder_repeats": "Reminder repeats",
+                            "grace_period": "Wait on the dock"
                         },
                         "data_description": {
                             "reminder": "Minutes after which the end is sent again, until Finished is pressed on the notification. 0 for none. Remind Later on the notification waits this long, or 30 minutes.",
-                            "reminder_repeats": "How many times the end is sent again"
+                            "reminder_repeats": "How many times the end is sent again",
+                            "grace_period": "Seconds a robot vacuum must stay on its dock, back from cleaning, before its cleaning is over, in case it sets off again. Raise it for one that goes back part way through to wash its mop or empty its bin. Where the vacuum reports its own progress, or whether it's cleaning, as Roborock does, that is followed instead, whatever this is."
                         }
                     },
                     "notify": {

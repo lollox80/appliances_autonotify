@@ -93,11 +93,13 @@
                             "end_title": "Titolo",
                             "end_message": "Messaggio",
                             "reminder": "Promemoria",
-                            "reminder_repeats": "Ripetizioni del promemoria"
+                            "reminder_repeats": "Ripetizioni del promemoria",
+                            "grace_period": "Attesa alla base"
                         },
                         "data_description": {
                             "reminder": "Minuti dopo i quali la fine viene inviata di nuovo, finché non si preme Finito sulla notifica. 0 per nessun promemoria. Ricordamelo dopo, sulla notifica, attende questo tempo o 30 minuti.",
-                            "reminder_repeats": "Quante volte la fine viene inviata di nuovo"
+                            "reminder_repeats": "Quante volte la fine viene inviata di nuovo",
+                            "grace_period": "Secondi per cui un robot aspirapolvere deve restare alla base, di ritorno dalla pulizia, prima che la pulizia sia finita, nel caso riparta. Aumentalo per uno che torna a metà per lavare il mop o svuotare il contenitore. Se l'aspirapolvere indica il proprio avanzamento, o se sta pulendo, come fa Roborock, si segue quello, qualunque sia questo valore."
                         }
                     },
                     "notify": {

@@ -70,6 +70,7 @@ from .const import (
     TYPE_DISCOVERY,
     TYPE_POWER,
     TYPE_VACUUM,
+    VACUUM_SETTLE,
 )
 from .dashboards import dashboards
 from .discovery import find_appliances, plug_switch
@@ -107,7 +108,9 @@ def discovery_schema(auto_discover: bool = True) -> vol.Schema:
     return vol.Schema({vol.Required(CONF_AUTO_DISCOVER, default=auto_discover): BooleanSelector()})
 
 
-async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: bool | None = None) -> vol.Schema:
+async def settings_schema(
+    hass: HomeAssistant, progress: bool = True, phase: bool | None = None, settle: bool = False
+) -> vol.Schema:
     fields: dict[vol.Marker, Any] = {
         vol.Required(CONF_NOTIFY_START, default=False): BooleanSelector(),
         vol.Required(CONF_NOTIFY_END, default=True): BooleanSelector(),
@@ -152,6 +155,11 @@ async def settings_schema(hass: HomeAssistant, progress: bool = True, phase: boo
         )
     else:
         notify[vol.Optional(CONF_TARGETS)] = EntitySelector(EntitySelectorConfig(domain="notify", multiple=True))
+    if settle:
+        # a robot vacuum's wait on its dock before its cleaning is over, where its own progress doesn't say
+        end[vol.Required(CONF_GRACE_PERIOD, default=VACUUM_SETTLE)] = NumberSelector(
+            NumberSelectorConfig(min=1, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS)
+        )
     sections: dict[str, dict[vol.Marker, Any]] = {
         SECTION_START: {
             vol.Optional(CONF_START_TITLE): TextSelector(),
@@ -333,7 +341,11 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             unset = (
                 defaults
                 | DEFAULT_CHOICES
-                | {CONF_NOTIFY_PHASE: self._phase_default(), CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS}
+                | {
+                    CONF_NOTIFY_PHASE: self._phase_default(),
+                    CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS,
+                    CONF_GRACE_PERIOD: VACUUM_SETTLE,
+                }
             )
             settings = {
                 key: value
@@ -349,6 +361,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             self.hass,
             progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
             phase=self._phase_default(),
+            settle=self.config_entry.data.get(CONF_TYPE) == TYPE_VACUUM,
         )
         shown = dict(self.config_entry.options)
         if shown.get(CONF_DASHBOARD) not in dashboards(self.hass):

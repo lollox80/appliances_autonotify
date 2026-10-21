@@ -133,6 +133,17 @@ VACUUM_BLIP: Final[float] = 5
 VACUUM_BLIP_KIND: Final[str] = "blip"
 # how long such a report is left before the cleaning is taken to be over, with nothing else heard from the vacuum
 VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
+# how long one stays on its dock once its own progress has reached the end of the cleaning, as Roborock reports it,
+# before its cleaning is over, there being no more to set off again for
+VACUUM_COMPLETE_SETTLE: Final[int] = 30
+VACUUM_COMPLETE_KIND: Final[str] = "complete"
+# seconds either side of setting off within which a running sensor of the vacuum's coming on is taken for its cleaning,
+# as Roborock's Cleaning is, which stays on through a recharge part way through and goes off only once it's over, where
+# its mop drying, also a running sensor, only comes on after
+VACUUM_JOB_LEAD: Final[float] = 60
+# how long one stays on its dock with that still on, recharging to carry on, before its cleaning is over regardless
+VACUUM_HELD_SETTLE: Final[int] = 6 * 3600
+VACUUM_HELD_KIND: Final[str] = "held"
 # what each entity made use of does, by its translation key as Home Connect has it: the state of the cycle, how far
 # along it is, when it will finish, and the program
 CYCLE_KEY: Final[str] = "operation_state"

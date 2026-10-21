@@ -58,8 +58,16 @@ heard from, though an end it told meanwhile still counts once the first goes qui
 
 A robot vacuum of any make, through whichever integration Home Assistant has for it, is found and set up like the other appliances.
 
-Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its dock, or stopped by itself, for 10 minutes after saying it was on its way back. A vacuum that goes straight to its dock from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
+Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its dock, or stopped by itself, for 10 minutes after saying it was on its way back. That wait is *Wait on the dock* in the *End message* settings of the vacuum, to raise for one that goes back part way through
+to wash its mop or empty its bin, or lower for one that never does. A vacuum that goes straight to its dock from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
 before its cleaning is taken to be over.
+
+Where the vacuum reports its own progress, as Roborock does, its cleaning is over 30 seconds after it's back on its dock with its progress at 100%, rather than waiting. Any percentage of the vacuum's
+other than its battery that climbs to 100 during a cleaning is taken for its progress, so one that doesn't reach 100, such as a brush's life left, makes no difference.
+
+Where the vacuum has a sensor of its own for whether it's cleaning, as Roborock's *Cleaning* is, that is followed instead: back on its dock with it still on is the same cleaning, for as long as 6 hours, as when it
+recharges part way through to carry on, and once it goes off the cleaning is over 30 seconds after it's back. Any *running* sensor of the vacuum's that comes on within a minute of it setting off is taken for this, so
+one that only comes on once it's back, such as its mop drying, makes no difference.
 
 Paused, or on its way back, it's still the same cleaning too, and paused once
 back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
@@ -204,7 +212,7 @@ used instead, as in "Washer" or "Kettle".
 - An oven has no pre-heating bar until Home Connect first reports its temperature, which isn't known after a restart of Home Assistant until the oven is next heating
 - An oven started from its own controls often has no pre-heating bar or pre-heated notification at all, since Home Connect may then never give Home Assistant the temperature it's set to, see [Oven Pre-heating](#oven-pre-heating)
 - Progress, time remaining and the program are only shown where the appliance reports them, so never for a power monitored appliance
-- A robot vacuum that goes back to its dock to recharge part way through, saying it's on its way back as it does at the end, has two cleanings told if it charges for longer than 10 minutes, since Home Assistant has no way to tell that dock from the last
+- A robot vacuum that goes back to its dock to recharge part way through, saying it's on its way back as it does at the end, has two cleanings told if it charges for longer than its *Wait on the dock*, unless it has a sensor for whether it's cleaning, since otherwise there's no telling that dock from the last
 - A robot vacuum whose integration never says it's on its way back is told to be finished 30 minutes after it's back on its dock
 - Some integrations, such as Ecovacs, report a robot vacuum docked within a second of setting off and keep to that while it cleans, so being docked that soon is only believed after 3 hours with nothing else heard, which is when one stopped just as it set off is told to be finished
 - If Home Assistant restarts while an oven is on, it isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature

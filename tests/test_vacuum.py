@@ -9,7 +9,14 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
-from custom_components.appliance_autonotify.const import DOMAIN, VACUUM_BLIP_SETTLE, VACUUM_MIDWAY_SETTLE, VACUUM_SETTLE
+from custom_components.appliance_autonotify.const import (
+    DOMAIN,
+    VACUUM_BLIP_SETTLE,
+    VACUUM_COMPLETE_SETTLE,
+    VACUUM_HELD_SETTLE,
+    VACUUM_MIDWAY_SETTLE,
+    VACUUM_SETTLE,
+)
 
 from .conftest import mock_supernotify
 from .test_watcher import ANDROID, ended, pass_time, set_state
@@ -29,6 +36,35 @@ def add_vacuum(hass: HomeAssistant, name: str = "Bruno", platform: str = "roboro
         "vacuum", platform, name, suggested_object_id=name.lower(), device_id=device.id, config_entry=source
     )
     return device.id, entity.entity_id
+
+
+def add_percentage(hass: HomeAssistant, device_id: str, key: str, device_class: str | None = None) -> str:
+    """A sensor of the vacuum's in %, as its integration would have it, returning its entity"""
+    return add_sensor(hass, device_id, "sensor", key, device_class, "%")
+
+
+def add_running(hass: HomeAssistant, device_id: str, key: str) -> str:
+    """A running binary sensor of the vacuum's, as Roborock's Cleaning or its mop drying, returning its entity"""
+    return add_sensor(hass, device_id, "binary_sensor", key, "running")
+
+
+def add_sensor(
+    hass: HomeAssistant, device_id: str, domain: str, key: str, device_class: str | None, unit: str | None = None
+) -> str:
+    vacuum = next(e for e in er.async_entries_for_device(er.async_get(hass), device_id) if e.domain == "vacuum")
+    source = hass.config_entries.async_get_entry(vacuum.config_entry_id or "")
+    assert source is not None
+    entity = er.async_get(hass).async_get_or_create(
+        domain,
+        source.domain,
+        f"{device_id}_{key}",
+        suggested_object_id=f"bruno_{key}",
+        device_id=device_id,
+        config_entry=source,
+        unit_of_measurement=unit,
+        original_device_class=device_class,
+    )
+    return entity.entity_id
 
 
 async def setup_vacuum(hass: HomeAssistant, device_id: str, **options: object) -> MockConfigEntry:
@@ -426,3 +462,233 @@ async def test_vacuum_stuck_in_italian(hass: HomeAssistant) -> None:
     await set_state(hass, vacuum, "error")
     await pass_time(hass, VACUUM_SETTLE)
     assert [call.data["message"] for call in calls] == ["Bruno ha bisogno di aiuto"]
+
+
+async def test_vacuum_done_by_its_own_progress_ends_soon(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """A real Roborock cleaning on 21/10, its progress going to 100 as it set off back at 08:20:20, docked at 08:23:26,
+    over 30 seconds later rather than 10 minutes, while its battery reaching 100 and a brush's life left at 100 don't
+    count"""
+    device_id, vacuum = add_vacuum(hass)
+    progress = add_percentage(hass, device_id, "cleaning_progress")
+    battery = add_percentage(hass, device_id, "battery", "battery")
+    brush = add_percentage(hass, device_id, "brush_left")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    # as left by the cleaning before
+    hass.states.async_set(progress, "100")
+    hass.states.async_set(brush, "100")
+    hass.states.async_set(battery, "99")
+    await setup_vacuum(hass, device_id, notify_start=True)
+
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 16)
+    await set_state(hass, progress, "0")
+    await set_state(hass, battery, "100")
+    await advance(hass, freezer, 3000)
+    await set_state(hass, progress, "77")
+    await set_state(hass, progress, "100")
+    await advance(hass, freezer, 3)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 183)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_COMPLETE_SETTLE - 1)
+    assert len(calls) == 1
+    await advance(hass, freezer, 1)
+    assert [call.data["message"] for call in calls] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+
+    # the next cleaning starts from the 100 left by this one, which isn't its end
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE - 1)
+    assert len(calls) == 4
+    await advance(hass, freezer, 1)
+    assert len(calls) == 6
+
+
+async def test_vacuum_back_to_wash_its_mop_short_of_100(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Back on its dock to wash its mop, as Roborock reports it, with its progress not yet at 100, is the same
+    cleaning"""
+    device_id, vacuum = add_vacuum(hass)
+    progress = add_percentage(hass, device_id, "cleaning_progress")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(progress, "100")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, progress, "40")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE - 60)
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert len(calls) == 1
+
+
+async def test_vacuum_progress_at_100_once_back(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Progress that only reaches 100 once the vacuum is back on its dock ends the cleaning as soon"""
+    device_id, vacuum = add_vacuum(hass)
+    progress = add_percentage(hass, device_id, "cleaning_progress")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, progress, "90")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 60)
+    await set_state(hass, progress, "100")
+    await advance(hass, freezer, VACUUM_COMPLETE_SETTLE)
+    assert len(calls) == 3
+
+
+async def test_vacuum_wait_on_its_dock_is_a_setting(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    device_id, vacuum = add_vacuum(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    entry = await setup_vacuum(hass, device_id)
+
+    # offered with the end, as it comes and so not kept
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["data_schema"] is not None
+    end = next(v for k, v in result["data_schema"].schema.items() if k == "end")
+    assert next(k for k in end.schema.schema if k == "grace_period").default() == VACUUM_SETTLE
+    form: dict[str, dict[str, object]] = {"start": {}, "notify": {}}
+    await hass.config_entries.options.async_configure(result["flow_id"], form | {"end": {"grace_period": VACUUM_SETTLE}})
+    await hass.async_block_till_done()
+    assert entry.options == {}
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], form | {"end": {"grace_period": 120}})
+    await hass.async_block_till_done()
+    assert entry.options == {"grace_period": 120}
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 119)
+    assert len(calls) == 1
+    await advance(hass, freezer, 1)
+    assert len(calls) == 3
+
+
+async def test_vacuum_recharging_part_way_through(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """A Roborock S6 as Vacuum Agent recorded it, its Cleaning on through a recharge at 19% and the cleaning carried on
+    after, going off only at the end, which is then over soon after it's back, while its mop drying coming on once it's
+    back holds nothing open"""
+    device_id, vacuum = add_vacuum(hass)
+    cleaning = add_running(hass, device_id, "cleaning")
+    drying = add_running(hass, device_id, "mop_drying")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(cleaning, "off")
+    hass.states.async_set(drying, "off")
+    await setup_vacuum(hass, device_id, notify_start=True)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, cleaning, "on")
+    await advance(hass, freezer, 3600)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 60)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 2 * 3600)
+    assert len(calls) == 1
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1800)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 60)
+    await set_state(hass, vacuum, "docked")
+    await set_state(hass, drying, "on")
+    await advance(hass, freezer, 10)
+    await set_state(hass, cleaning, "off")
+    await advance(hass, freezer, VACUUM_COMPLETE_SETTLE - 1)
+    assert len(calls) == 1
+    await advance(hass, freezer, 1)
+    assert [call.data["message"] for call in calls] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
+
+
+async def test_vacuum_running_sensor_off_before_its_back(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    device_id, vacuum = add_vacuum(hass)
+    cleaning = add_running(hass, device_id, "cleaning")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(cleaning, "off")
+    await setup_vacuum(hass, device_id)
+
+    # on just before the vacuum says it's cleaning, as one tick of its integration can have it
+    await set_state(hass, cleaning, "on")
+    await advance(hass, freezer, 1)
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1200)
+    await set_state(hass, cleaning, "off")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_COMPLETE_SETTLE)
+    assert len(calls) == 3
+
+
+async def test_vacuum_running_sensor_stuck_on(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """A running sensor that never goes off holds the cleaning open only so long"""
+    device_id, vacuum = add_vacuum(hass)
+    cleaning = add_running(hass, device_id, "cleaning")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(cleaning, "off")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, cleaning, "on")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    # paused on its dock is still waiting on it
+    await set_state(hass, vacuum, "paused")
+    await advance(hass, freezer, VACUUM_HELD_SETTLE - 1)
+    assert len(calls) == 1
+    await advance(hass, freezer, 1)
+    assert len(calls) == 3
+
+
+async def test_vacuum_running_sensor_on_from_before(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Its mop still drying from the cleaning before as it sets off, or coming on later, isn't its cleaning"""
+    device_id, vacuum = add_vacuum(hass)
+    drying = add_running(hass, device_id, "mop_drying")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(drying, "on")
+    await setup_vacuum(hass, device_id)
+    await advance(hass, freezer, 3600)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert len(calls) == 3
+
+    await set_state(hass, drying, "off")
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 600)
+    await set_state(hass, drying, "on")
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert len(calls) == 6
+
+
+async def test_vacuum_running_sensor_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Cleaning as Home Assistant starts, its running sensor on, still holds the cleaning open"""
+    device_id, vacuum = add_vacuum(hass)
+    cleaning = add_running(hass, device_id, "cleaning")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "cleaning")
+    hass.states.async_set(cleaning, "on")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert calls == []
+    await set_state(hass, cleaning, "off")
+    await advance(hass, freezer, VACUUM_COMPLETE_SETTLE)
+    assert len(calls) == 2
