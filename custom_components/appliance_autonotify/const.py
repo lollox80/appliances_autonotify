@@ -88,6 +88,20 @@ ENERGY_PLACEHOLDER: Final[str] = "{energy}"
 COST_PLACEHOLDER: Final[str] = "{cost}"
 # the time of day the cycle began, as it runs and once it's over
 START_TIME_PLACEHOLDER: Final[str] = "{start_time}"
+# the filament a print took, and what it cost at the price per kilo chosen
+WEIGHT_PLACEHOLDER: Final[str] = "{weight}"
+LENGTH_PLACEHOLDER: Final[str] = "{length}"
+FILAMENT_COST_PLACEHOLDER: Final[str] = "{filament_cost}"
+# the price of a kilo of filament, in the currency of Home Assistant, 0 or unset for no cost
+CONF_FILAMENT_PRICE: Final[str] = "filament_price"
+# the bed temperature below which a finished print is ready to come off, 0 or unset for no notification of it
+CONF_COOLED_TEMPERATURE: Final[str] = "cooled_temperature"
+# hours the bed is waited for, one that never cools as far being left alone
+COOLING_WAIT: Final[float] = 6 * 3600
+COOLED_MESSAGES: Final[dict[str, str]] = {
+    "en": "Bed down to {temperature}, the print can come off",
+    "it": "Piatto sceso a {temperature}, la stampa si può staccare",
+}
 DEFAULT_TITLE: Final[str] = "{name}"
 DEFAULT_START_MESSAGE: Final[str] = "{name} started"
 DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
@@ -275,6 +289,10 @@ LAYERS_KEY: Final[str] = "total_layers"
 # pressed by mistake that loses the cycle
 PAUSE_KEY: Final[str] = "pause"
 RESUME_KEY: Final[str] = "resume"
+# the filament a print takes, in grams and in metres, and how hot the bed is, for it to be taken off once it's cool
+WEIGHT_KEY: Final[str] = "print_weight"
+LENGTH_KEY: Final[str] = "print_length"
+BED_TEMPERATURE_KEY: Final[str] = "bed_temp"
 CAMERA_DOMAIN: Final[str] = "camera"
 # the same entities as other integrations name them, whichever integration they come from, since it's what an
 # entity does that matters, and which entities an appliance has together
@@ -321,6 +339,9 @@ ENTITY_DOMAINS: Final[dict[str, str]] = {
     LAYERS_KEY: "sensor",
     PAUSE_KEY: "button",
     RESUME_KEY: "button",
+    WEIGHT_KEY: "sensor",
+    LENGTH_KEY: "sensor",
+    BED_TEMPERATURE_KEY: "sensor",
 }
 # the type of appliance of a platform that has only the one
 PLATFORM_TYPES: Final[dict[str, str]] = {"bambu_lab": "3d_printer"}

@@ -29,7 +29,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.translation import async_translate_state
 from homeassistant.util import dt as dt_util
-from homeassistant.util.unit_conversion import DurationConverter, PowerConverter
+from homeassistant.util.unit_conversion import DurationConverter, PowerConverter, TemperatureConverter
 
 from .const import (
     ACTION_FINISHED,
@@ -45,13 +45,16 @@ from .const import (
     ANDROID_BUTTONS,
     ANDROID_CHANNEL,
     APPLIANCE_TYPES,
+    BED_TEMPERATURE_KEY,
     CAMERA_DOMAIN,
     CAVITY_TEMPERATURE_KEY,
+    CONF_COOLED_TEMPERATURE,
     CONF_CUSTOM_TARGET,
     CONF_DASHBOARD,
     CONF_DELIVERIES,
     CONF_END_MESSAGE,
     CONF_END_TITLE,
+    CONF_FILAMENT_PRICE,
     CONF_GRACE_PERIOD,
     CONF_LIVE_COUNT,
     CONF_LIVE_DETAIL,
@@ -74,6 +77,8 @@ from .const import (
     CONF_TARGET,
     CONF_TARGETS,
     CONF_THRESHOLD,
+    COOLED_MESSAGES,
+    COOLING_WAIT,
     COST_PLACEHOLDER,
     CYCLE_SETTLE,
     DEFAULT_END_MESSAGE,
@@ -96,6 +101,7 @@ from .const import (
     FAULT_TEXT_ATTRIBUTE,
     FAULTS_KEY,
     FAULTS_SERIOUS,
+    FILAMENT_COST_PLACEHOLDER,
     FINISH_DRIFT,
     FINISH_TIME_KEY,
     KEY_TYPE_PREFIXES,
@@ -104,6 +110,8 @@ from .const import (
     LAYER_MESSAGES,
     LAYER_REFRESH,
     LAYERS_KEY,
+    LENGTH_KEY,
+    LENGTH_PLACEHOLDER,
     LIVE_COUNT_LAYERS,
     LIVE_COUNT_PERCENT,
     LIVE_DETAIL_PROGRAM,
@@ -172,6 +180,8 @@ from .const import (
     VACUUM_RETURNING,
     VACUUM_SETTLE,
     VACUUM_SHOWN,
+    WEIGHT_KEY,
+    WEIGHT_PLACEHOLDER,
 )
 from .dashboards import dashboard_url
 from .discovery import companions, cycle_entities, is_cycle_entity, role_key
@@ -182,6 +192,7 @@ from .totals import (
     energy_entity_id,
     energy_price,
     energy_reading,
+    format_amount,
     format_cost,
     format_duration,
     format_energy,
@@ -722,6 +733,7 @@ class ApplianceWatcher:
                 # nothing to say of less than a meter can count, rather than none used, or nothing to pay
                 counted = amount is not None and round(amount, 2) > 0
                 values[placeholder] = (said if speak else written)(self.hass, amount or 0) if counted else ""
+        values.update({p: value for p, value in self._more_values(speak).items() if p in text})
         if PROGRAM_PLACEHOLDER in text:
             if not self.program_kept:
                 self.last_program = self._program() or self.last_program
@@ -742,6 +754,10 @@ class ApplianceWatcher:
             return text
         # closing up the gaps left where there's nothing to say, line by line
         return "\n".join(" ".join(line.split()) for line in text.strip().split("\n"))
+
+    def _more_values(self, speak: bool) -> dict[str, str]:
+        """Placeholders an appliance of a particular kind has for its messages, filled in"""
+        return {}
 
     def _state(self, key: str) -> State | None:
         """The state of one of the appliance's entities, where it has the entity and its state is known, or failing
@@ -980,6 +996,12 @@ class HomeConnectWatcher(ApplianceWatcher):
         self._abandoned_at: datetime | None = None
         # when the Live Activity was last brought up to date for a layer
         self._layer_shown: datetime | None = None
+        self.filament_price: float = float(entry.options.get(CONF_FILAMENT_PRICE) or 0)
+        self.cooled_temperature: float = float(entry.options.get(CONF_COOLED_TEMPERATURE) or 0)
+        # the grams and metres of filament the print just over took, kept for its reminders
+        self._filament: tuple[float | None, float | None] = (None, None)
+        # waiting for the bed to cool, after a print
+        self._cancel_cooling: CALLBACK_TYPE | None = None
 
     @callback
     def async_start(self) -> None:
@@ -1042,6 +1064,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.entry.async_on_unload(async_track_state_change_event(self.hass, cycle_entity_ids, self._cycle_changed))
         self.entry.async_on_unload(self._keep_running)
         self.entry.async_on_unload(self._forget_preheated)
+        self.entry.async_on_unload(self._stop_cooling)
         for keys, listener in (
             ((PROGRESS_KEY,), self._progress_changed),
             ((STAGE_KEY,), self._stage_changed),
@@ -1111,6 +1134,110 @@ class HomeConnectWatcher(ApplianceWatcher):
         if self.appliance_type in PLATFORM_TYPES.values():
             return None
         return super()._title_phase()
+
+    @property
+    def has_filament(self) -> bool:
+        """Whether the appliance says how much filament a print takes, as a 3D printer does"""
+        return WEIGHT_KEY in self.entity_ids
+
+    @property
+    def has_bed(self) -> bool:
+        """Whether the appliance says how hot its bed is, as a 3D printer does"""
+        return BED_TEMPERATURE_KEY in self.entity_ids
+
+    def _filament_now(self) -> tuple[float | None, float | None]:
+        weight, length = self._number(WEIGHT_KEY), self._number(LENGTH_KEY)
+        return (weight or None, length or None)
+
+    def _more_values(self, speak: bool) -> dict[str, str]:
+        """The filament a print takes, as it runs, or took, once it's over, and its cost, empty where not known"""
+        weight, length = self._filament_now() if self.running else self._filament
+        language = self.hass.config.language.split("-")[0]
+        grams, metres = ("grammi", "metri") if language == "it" else ("grams", "metres")
+        values = {
+            WEIGHT_PLACEHOLDER: "",
+            LENGTH_PLACEHOLDER: "",
+            FILAMENT_COST_PLACEHOLDER: "",
+        }
+        if weight is not None:
+            values[WEIGHT_PLACEHOLDER] = format_amount(self.hass, weight, grams if speak else "g", 0 if weight >= 10 else 1)
+            if self.filament_price > 0 and (cost := weight / 1000 * self.filament_price) >= 0.005:
+                values[FILAMENT_COST_PLACEHOLDER] = (speak_cost if speak else format_cost)(self.hass, cost)
+        if length is not None:
+            values[LENGTH_PLACEHOLDER] = format_amount(self.hass, length, metres if speak else "m", 2)
+        return values
+
+    async def _ended(self, finished: bool, context: Context) -> None:
+        self._filament = self._filament_now()
+        await super()._ended(finished, context)
+        if finished:
+            self._watch_cooling(context)
+
+    @callback
+    def _watch_cooling(self, context: Context) -> None:
+        """Tell once the bed is cool enough for the print to come off, where that's been asked for"""
+        self._stop_cooling()
+        entity_id = self.entity_ids.get(BED_TEMPERATURE_KEY)
+        if self.cooled_temperature <= 0 or entity_id is None:
+            return
+
+        async def bed_changed(event: Event[EventStateChangedData]) -> None:
+            await self._cooling(context)
+
+        stop_listening = async_track_state_change_event(self.hass, entity_id, bed_changed)
+
+        # nor for ever, in case it never cools that far
+        @callback
+        def waited(now: datetime) -> None:
+            self._stop_cooling()
+
+        stop_waiting = async_call_later(self.hass, COOLING_WAIT, waited)
+
+        @callback
+        def stop() -> None:
+            stop_listening()
+            stop_waiting()
+
+        self._cancel_cooling = stop
+        self.entry.async_create_task(self.hass, self._cooling(context))
+
+    @callback
+    def _stop_cooling(self) -> None:
+        if self._cancel_cooling is not None:
+            self._cancel_cooling()
+            self._cancel_cooling = None
+
+    async def _cooling(self, context: Context) -> None:
+        bed = self._state(BED_TEMPERATURE_KEY)
+        temperature = self._number(BED_TEMPERATURE_KEY)
+        if self._cancel_cooling is None or bed is None or temperature is None:
+            return
+        unit = bed.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "°")
+        system = self.hass.config.units.temperature_unit
+        # the threshold is in the units Home Assistant is set to, the bed in its own
+        if unit in TemperatureConverter.VALID_UNITS and unit != system:
+            if TemperatureConverter.convert(temperature, unit, system) >= self.cooled_temperature:
+                return
+        elif temperature >= self.cooled_temperature:
+            return
+        self._stop_cooling()
+        language = self.hass.config.language.split("-")[0]
+        text = COOLED_MESSAGES.get(language, COOLED_MESSAGES["en"]).format(temperature=f"{round(temperature)}{unit}")
+        title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
+        async with self._sending:
+            if not supernotify_available(self.hass):
+                await self._send_message(text, title, context)
+                return
+            # for whoever is to take it off, not for the whole house to hear
+            await self._supernotify(
+                text,
+                title,
+                context,
+                mobile_only=True,
+                resend=True,
+                extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": f"{self.tag}_cooled"},
+                actions=self._tap_actions(),
+            )
 
     @property
     def has_problem(self) -> bool:
@@ -1374,6 +1501,8 @@ class HomeConnectWatcher(ApplianceWatcher):
             self.running = True
             self._helped = False
             self._abandoned_at = None
+            # the last print's bed is no longer what's waited for
+            self._stop_cooling()
             # unless it's hot already, from not long having been off
             temperatures = self._temperatures()
             self.preheated = temperatures is not None and temperatures[0] >= temperatures[1]

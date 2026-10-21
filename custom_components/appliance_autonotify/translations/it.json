@@ -101,11 +101,15 @@
                             "end_title": "Titolo",
                             "end_message": "Messaggio",
                             "reminder": "Promemoria",
-                            "reminder_repeats": "Ripetizioni del promemoria"
+                            "reminder_repeats": "Ripetizioni del promemoria",
+                            "filament_price": "Prezzo del filamento",
+                            "cooled_temperature": "Pronta da staccare sotto"
                         },
                         "data_description": {
                             "reminder": "Minuti dopo i quali la fine viene inviata di nuovo, finché non si preme Finito sulla notifica. 0 per nessun promemoria. Ricordamelo dopo, sulla notifica, attende questo tempo o 30 minuti.",
-                            "reminder_repeats": "Quante volte la fine viene inviata di nuovo"
+                            "reminder_repeats": "Quante volte la fine viene inviata di nuovo",
+                            "filament_price": "Il prezzo di un chilo di filamento. Per una stampante, {filament_placeholders} nel messaggio di fine diventano il filamento usato dalla stampa, in grammi e metri, e quanto è costato a questo prezzo.",
+                            "cooled_temperature": "Finita una stampa, una notifica ai telefoni quando il piatto è sceso sotto questa temperatura, così la stampa si stacca facilmente. 0 per nessuna."
                         }
                     },
                     "notify": {

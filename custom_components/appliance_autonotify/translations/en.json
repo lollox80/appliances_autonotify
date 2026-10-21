@@ -101,11 +101,15 @@
                             "end_title": "Title",
                             "end_message": "Message",
                             "reminder": "Reminder",
-                            "reminder_repeats": "Reminder repeats"
+                            "reminder_repeats": "Reminder repeats",
+                            "filament_price": "Filament price",
+                            "cooled_temperature": "Ready to take off below"
                         },
                         "data_description": {
                             "reminder": "Minutes after which the end is sent again, until Finished is pressed on the notification. 0 for none. Remind Later on the notification waits this long, or 30 minutes.",
-                            "reminder_repeats": "How many times the end is sent again"
+                            "reminder_repeats": "How many times the end is sent again",
+                            "filament_price": "The price of a kilo of filament. For a printer, {filament_placeholders} in the end message become the filament the print took, in grams and metres, and what it cost at this price.",
+                            "cooled_temperature": "Once a print has finished, a notification to the phones when the bed has cooled below this temperature, so the print comes off easily. 0 for none."
                         }
                     },
                     "notify": {

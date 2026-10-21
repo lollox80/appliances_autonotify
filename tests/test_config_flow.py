@@ -373,6 +373,7 @@ async def test_settings_without_supernotify(hass: HomeAssistant) -> None:
         "supernotify": SUPERNOTIFY_MISSING,
         "program_placeholder": "{program}",
         "totals_placeholders": "{duration}, {energy}, {cost}",
+        "filament_placeholders": "{weight}, {length}, {filament_cost}",
         "start_time_placeholder": "{start_time}",
     }
     # with no Live Activity, there's no title for the program to go in

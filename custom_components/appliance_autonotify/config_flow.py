@@ -27,11 +27,13 @@ from homeassistant.helpers.selector import (
 from .compat import vol
 from .const import (
     CONF_AUTO_DISCOVER,
+    CONF_COOLED_TEMPERATURE,
     CONF_CUSTOM_TARGET,
     CONF_DASHBOARD,
     CONF_DELIVERIES,
     CONF_END_MESSAGE,
     CONF_END_TITLE,
+    CONF_FILAMENT_PRICE,
     CONF_GRACE_PERIOD,
     CONF_LIVE_COUNT,
     CONF_LIVE_DETAIL,
@@ -67,6 +69,8 @@ from .const import (
     DOMAIN,
     DURATION_PLACEHOLDER,
     ENERGY_PLACEHOLDER,
+    FILAMENT_COST_PLACEHOLDER,
+    LENGTH_PLACEHOLDER,
     LIVE_COUNT_PERCENT,
     LIVE_COUNTS,
     LIVE_DETAIL_TIME,
@@ -82,6 +86,7 @@ from .const import (
     TYPE_DISCOVERY,
     TYPE_POWER,
     TYPE_VACUUM,
+    WEIGHT_PLACEHOLDER,
 )
 from .dashboards import dashboards
 from .discovery import find_appliances, plug_switch
@@ -109,7 +114,13 @@ DEFAULT_CHOICES: dict[str, bool | str] = {
 
 # settings on the form only for an appliance that has what they're for, known only while it's running, so kept as
 # they were when the form is shown without them
-SHOWN_IF_RUNNING: tuple[str, ...] = (CONF_NOTIFY_PROBLEM, CONF_SNAPSHOT, CONF_LIVE_COUNT)
+SHOWN_IF_RUNNING: tuple[str, ...] = (
+    CONF_NOTIFY_PROBLEM,
+    CONF_SNAPSHOT,
+    CONF_LIVE_COUNT,
+    CONF_FILAMENT_PRICE,
+    CONF_COOLED_TEMPERATURE,
+)
 
 DEFAULT_TEXTS: dict[str, str] = {
     CONF_START_TITLE: DEFAULT_TITLE,
@@ -135,6 +146,8 @@ async def settings_schema(
     problem: bool = False,
     camera: bool = False,
     layers: bool = False,
+    filament: bool = False,
+    bed: bool = False,
 ) -> vol.Schema:
     """The settings of an appliance, with maintenance for one with something to maintain, and the cycles between each
     of the items for its type, as `maintenance` has them"""
@@ -175,6 +188,19 @@ async def settings_schema(
         vol.Optional(CONF_END_TITLE): TextSelector(),
         vol.Optional(CONF_END_MESSAGE): TextSelector(TextSelectorConfig(multiline=True)),
     }
+    if filament:
+        # for what the filament a print took cost
+        end[vol.Optional(CONF_FILAMENT_PRICE)] = NumberSelector(
+            NumberSelectorConfig(
+                min=0, max=1000, step=0.01, mode=NumberSelectorMode.BOX, unit_of_measurement=f"{hass.config.currency}/kg"
+            )
+        )
+    if bed:
+        end[vol.Optional(CONF_COOLED_TEMPERATURE)] = NumberSelector(
+            NumberSelectorConfig(
+                min=0, max=250, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=hass.config.units.temperature_unit
+            )
+        )
     if supernotify_available(hass):
         # a choice of what's there, and not a box to type in, so a notification can't be made to open anything else
         choices = [SelectOptionDict(value=path, label=title) for path, title in dashboards(hass).items()]
@@ -450,6 +476,8 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             problem=getattr(watcher, "has_problem", False),
             camera=getattr(watcher, "camera_entity_id", None) is not None,
             layers=getattr(watcher, "has_layers", False),
+            filament=getattr(watcher, "has_filament", False),
+            bed=getattr(watcher, "has_bed", False),
         )
         self._shown = field_names(schema)
         shown = dict(self.config_entry.options)
@@ -468,6 +496,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 "program_placeholder": PROGRAM_PLACEHOLDER,
                 "totals_placeholders": f"{DURATION_PLACEHOLDER}, {ENERGY_PLACEHOLDER}, {COST_PLACEHOLDER}",
                 "start_time_placeholder": START_TIME_PLACEHOLDER,
+                "filament_placeholders": f"{WEIGHT_PLACEHOLDER}, {LENGTH_PLACEHOLDER}, {FILAMENT_COST_PLACEHOLDER}",
             },
         )
 

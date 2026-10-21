@@ -59,6 +59,12 @@ def _number(hass: HomeAssistant, value: float) -> str:
     return text if _language(hass) in DECIMAL_POINT_LANGUAGES else text.replace(".", ",")
 
 
+def format_amount(hass: HomeAssistant, value: float, unit: str, places: int) -> str:
+    """An amount to so many decimal places, with the decimal mark of the language, and its unit"""
+    text = f"{value:.{places}f}"
+    return f"{text if _language(hass) in DECIMAL_POINT_LANGUAGES else text.replace('.', ',')} {unit}"
+
+
 def format_time(when: datetime) -> str:
     """The time of day, in Home Assistant's time zone, such as 11:29"""
     return dt_util.as_local(when).strftime("%H:%M")

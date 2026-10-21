@@ -25,6 +25,9 @@ EXTRA_ENTITIES = (
     ("button", "resume"),
     ("button", "stop"),
     ("camera", "camera"),
+    ("sensor", "print_weight"),
+    ("sensor", "print_length"),
+    ("sensor", "bed_temp"),
 )
 # the fault of the print of 15 October, as ha-bambulab reported it
 NOZZLE = "The nozzle is clogged, or the heatbed is not level"
@@ -730,3 +733,182 @@ async def test_printer_settings_kept_when_saved_while_it_isnt_running(hass: Home
         result["flow_id"], {"notify_start": False, "start": {}, "end": {}, "notify": {}}
     )
     assert entry.options == {"notify_problem": False, "live_count": "layers"}
+
+
+async def test_filament_in_the_end_message(hass: HomeAssistant) -> None:
+    hass.config.language = "it"
+    hass.config.currency = "EUR"
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    await setup_printer(
+        hass,
+        printer,
+        end_message="📦 {program}\n🧵 {weight} · {length}\n💰 {filament_cost}",
+        filament_price=24.99,
+        reminder=1,
+    )
+    hass.states.async_set(printer["subtask_name"], "Benchy")
+    hass.states.async_set(printer["print_weight"], "12.44", {"unit_of_measurement": "g"})
+    hass.states.async_set(printer["print_length"], "4.051", {"unit_of_measurement": "m"})
+    await set_state(hass, printer["print_status"], "finish")
+    assert calls[-1].data["message"] == "📦 Benchy\n🧵 12 g · 4,05 m\n💰 0,31 €"
+    assert calls[-1].data["spoken_message"] == "A1. Benchy. 12 grammi, 4,05 metri. 31 centesimi."
+    # gone from the printer by the time of the reminder, but still what the print took
+    hass.states.async_set(printer["print_weight"], "0")
+    hass.states.async_set(printer["print_length"], "0")
+    await pass_time(hass, 60)
+    assert calls[-1].data["message"] == "📦 Benchy\n🧵 12 g · 4,05 m\n💰 0,31 €"
+
+
+async def test_filament_unknown_leaves_its_lines_out(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    await setup_printer(hass, printer, end_message="Done\n🧵 {weight}\n💰 {filament_cost}")
+    hass.states.async_set(printer["print_weight"], "3.2")
+    await set_state(hass, printer["print_status"], "finish")
+    # a small print to a decimal, with no price to cost it at
+    assert calls[-1].data["message"] == "Done\n🧵 3.2 g"
+
+
+async def test_ready_to_take_off_once_the_bed_cools(hass: HomeAssistant) -> None:
+    hass.config.language = "it"
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    celsius = {"unit_of_measurement": "°C"}
+    hass.states.async_set(printer["bed_temp"], "65", celsius)
+    entry = await setup_printer(hass, printer, cooled_temperature=35)
+    await set_state(hass, printer["print_status"], "finish")
+    told = len(calls)
+    hass.states.async_set(printer["bed_temp"], "40", celsius)
+    await hass.async_block_till_done()
+    assert len(calls) == told
+    hass.states.async_set(printer["bed_temp"], "34.6", celsius)
+    await hass.async_block_till_done()
+    assert len(calls) == told + 1
+    assert calls[-1].data == {
+        "message": "Piatto sceso a 35°C, la stampa si può staccare",
+        "title": "A1",
+        "force_resend": True,
+        "delivery_selection": "fixed",
+        "delivery": ["mobile_push", "phones"],
+        "extra_data": {"notification_icon": ICON, "mobile_push_notification_tag": f"appliance_{entry.entry_id}_cooled"},
+    }
+    # the once
+    hass.states.async_set(printer["bed_temp"], "30", celsius)
+    await hass.async_block_till_done()
+    assert len(calls) == told + 1
+
+
+async def test_bed_already_cool_is_told_straight_away(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    hass.states.async_set(printer["bed_temp"], "28")
+    await setup_printer(hass, printer, cooled_temperature=35)
+    await set_state(hass, printer["print_status"], "finish")
+    assert calls[-1].data["message"] == "Bed down to 28°, the print can come off"
+
+
+async def test_next_print_stops_waiting_for_the_bed(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    hass.states.async_set(printer["bed_temp"], "65")
+    await setup_printer(hass, printer, cooled_temperature=35)
+    await set_state(hass, printer["print_status"], "finish")
+    await set_state(hass, printer["print_status"], "prepare")
+    await pass_time(hass, 5)
+    told = len(calls)
+    await set_state(hass, printer["bed_temp"], "30")
+    assert len(calls) == told
+
+
+async def test_no_waiting_for_the_bed_unless_asked_or_failed(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    hass.states.async_set(printer["bed_temp"], "65")
+    await setup_printer(hass, printer)
+    await set_state(hass, printer["print_status"], "finish")
+    told = len(calls)
+    await set_state(hass, printer["bed_temp"], "20")
+    assert len(calls) == told
+
+
+async def test_ready_to_take_off_without_supernotify(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    hass.states.async_set(printer["print_status"], "running")
+    hass.states.async_set(printer["bed_temp"], "65")
+    await setup_printer(hass, printer, cooled_temperature=35, targets=["notify.kitchen_display"], notify_end=False)
+    calls = async_mock_service(hass, "notify", "send_message")
+    await set_state(hass, printer["print_status"], "finish")
+    await set_state(hass, printer["bed_temp"], "30")
+    assert [c.data["message"] for c in calls] == ["Bed down to 30°, the print can come off"]
+
+
+async def test_filament_and_bed_settings(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "idle")
+    entry = await setup_printer(hass, printer)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    end = next(field for key, field in result["data_schema"].schema.items() if str(key) == "end")
+    assert {"filament_price", "cooled_temperature"} <= {str(key) for key in end.schema.schema}
+    assert result["description_placeholders"]["filament_placeholders"] == "{weight}, {length}, {filament_cost}"
+    await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"start": {}, "end": {"filament_price": 24.99, "cooled_temperature": 35}, "notify": {}},
+    )
+    assert entry.options == {"filament_price": 24.99, "cooled_temperature": 35}
+
+
+async def test_bed_in_fahrenheit_against_a_threshold_in_celsius(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    fahrenheit = {"unit_of_measurement": "°F"}
+    hass.states.async_set(printer["bed_temp"], "150", fahrenheit)
+    await setup_printer(hass, printer, cooled_temperature=35)
+    await set_state(hass, printer["print_status"], "finish")
+    told = len(calls)
+    # 35°C is 95°F
+    hass.states.async_set(printer["bed_temp"], "96", fahrenheit)
+    await hass.async_block_till_done()
+    assert len(calls) == told
+    hass.states.async_set(printer["bed_temp"], "94", fahrenheit)
+    await hass.async_block_till_done()
+    assert calls[-1].data["message"] == "Bed down to 94°F, the print can come off"
+
+
+async def test_bed_waited_for_no_longer_than_six_hours(hass: HomeAssistant) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    hass.states.async_set(printer["bed_temp"], "65")
+    await setup_printer(hass, printer, cooled_temperature=20)
+    await set_state(hass, printer["print_status"], "finish")
+    told = len(calls)
+    await pass_time(hass, 6 * 3600 + 1)
+    await set_state(hass, printer["bed_temp"], "18")
+    assert len(calls) == told
+
+
+async def test_filament_settings_kept_when_saved_while_it_isnt_running(hass: HomeAssistant) -> None:
+    mock_supernotify(hass)
+    assert await async_setup_component(hass, "notify", {})
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="A1",
+        unique_id="gone",
+        data={"device_id": "gone"},
+        options={"filament_price": 24.99, "cooled_temperature": 35},
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], {"start": {}, "end": {}, "notify": {}})
+    assert entry.options == {"filament_price": 24.99, "cooled_temperature": 35}
