@@ -215,6 +215,13 @@ START_SETTLE: Final[float] = 3
 # seconds a Live Activity is left to open before anything more is sent to it, since a push sent straight after the
 # start can reach a phone ahead of it, and then be overwritten by the start, with no bar and no program
 LIVE_SETTLE: Final[float] = 5
+# where a cycle under way is kept through a restart of Home Assistant, one store for each appliance
+CYCLE_STORE: Final[str] = f"{DOMAIN}.cycle.{{entry_id}}"
+CYCLE_STORE_VERSION: Final[int] = 1
+# seconds a change waits to be saved, so a few close together are written once
+CYCLE_SAVE_DELAY: Final[float] = 1
+# hours after which a cycle kept is too old to carry on from, as when Home Assistant has been off since
+CYCLE_KEPT_HOURS: Final[float] = 24
 # the cycle is over without finishing, so the Live Activity goes without an end notification
 STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting")
 

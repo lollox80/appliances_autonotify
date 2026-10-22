@@ -207,7 +207,7 @@ used instead, as in "Washer" or "Kettle".
 - An appliance with a stage but no progress, such as a Samsung one through SmartThings, has its Live Activity brought up to date only as its stage changes, so its time remaining may lag a change of its finish time until then
 
 - If the appliance never reports the end of its cycle, the Live Activity stays on the phone until dismissed
-- If Home Assistant restarts mid-cycle, the end is still notified and the Live Activity closed
+- A cycle under way survives a Home Assistant restart: it isn't told of as started again, and the wait to see that it's over, or for a reminder, carries on from where it was, unless Home Assistant has been off for more than a day
 - An appliance that stops without saying it has finished or been switched off is taken to be finished 10 seconds later, in case it carries on, as an oven does when its settings are changed
 - An oven has no pre-heating bar until Home Connect first reports its temperature, which isn't known after a restart of Home Assistant until the oven is next heating
 - An oven started from its own controls often has no pre-heating bar or pre-heated notification at all, since Home Connect may then never give Home Assistant the temperature it's set to, see [Oven Pre-heating](#oven-pre-heating)
@@ -215,7 +215,7 @@ used instead, as in "Washer" or "Kettle".
 - A robot vacuum that goes back to its dock to recharge part way through, saying it's on its way back as it does at the end, has two cleanings told if it charges for longer than its *Wait on the dock*, unless it has a sensor for whether it's cleaning, since otherwise there's no telling that dock from the last
 - A robot vacuum whose integration never says it's on its way back is told to be finished 30 minutes after it's back on its dock
 - Some integrations, such as Ecovacs, report a robot vacuum docked within a second of setting off and keep to that while it cleans, so being docked that soon is only believed after 3 hours with nothing else heard, which is when one stopped just as it set off is told to be finished
-- If Home Assistant restarts while an oven is on, it isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature
+- An oven still warming up when Home Assistant restarts is still shown as pre-heating, and told of once up to heat, unless it got there while Home Assistant was off. One switched on while Home Assistant was off isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature
 - An oven with no timer set reports its progress as 100%, so that is what the bar shows once it's up to heat
 
 ## Known Issues
