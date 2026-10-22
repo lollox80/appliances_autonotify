@@ -6,12 +6,15 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import CONF_TYPE
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_DASHBOARD,
     CONF_DASHBOARD_FOUND,
     CONF_LIVE_TITLE,
     CONF_PROGRAM_IN_TITLE,
+    CYCLE_STORE,
+    CYCLE_STORE_VERSION,
     DOMAIN,
     LIVE_TITLE_NAME,
     TYPE_DISCOVERY,
@@ -63,6 +66,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -
         return True
     watchers: dict[str | None, type[ApplianceWatcher]] = {TYPE_POWER: PowerWatcher, TYPE_VACUUM: VacuumWatcher}
     watcher = watchers.get(entry.data.get(CONF_TYPE), HomeConnectWatcher)(hass, entry)
+    # a cycle under way before Home Assistant restarted, to carry on with as it starts
+    await watcher.async_load()
     watcher.async_start()
     watcher.async_listen_for_actions()
     entry.runtime_data = watcher
@@ -84,3 +89,8 @@ def _choose_dashboard(hass: HomeAssistant, entry: AppliancesConfigEntry, watcher
 async def async_unload_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -> bool:
     # the watcher's listeners are removed by the entry's own unload callbacks
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -> None:
+    # whatever was kept of its cycle through a restart
+    await Store(hass, CYCLE_STORE_VERSION, CYCLE_STORE.format(entry_id=entry.entry_id)).async_remove()
