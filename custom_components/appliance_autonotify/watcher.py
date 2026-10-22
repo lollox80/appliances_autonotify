@@ -16,6 +16,7 @@ from homeassistant.const import (
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_DEVICE_ID,
     CONF_TYPE,
+    EVENT_HOMEASSISTANT_STOP,
     STATE_ON,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -27,6 +28,7 @@ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.translation import async_translate_state
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import DurationConverter, PowerConverter, TemperatureConverter
@@ -80,7 +82,11 @@ from .const import (
     COOLED_MESSAGES,
     COOLING_WAIT,
     COST_PLACEHOLDER,
+    CYCLE_KEPT_HOURS,
+    CYCLE_SAVE_DELAY,
     CYCLE_SETTLE,
+    CYCLE_STORE,
+    CYCLE_STORE_VERSION,
     DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_ICON,
@@ -218,6 +224,20 @@ def _later(context: Context) -> Context:
     return Context(parent_id=context.id)
 
 
+def _time(value: object) -> datetime | None:
+    """A time as kept, or None where there's none"""
+    return dt_util.parse_datetime(value) if isinstance(value, str) else None
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _seconds_to(due: datetime) -> float:
+    """Seconds till a time, none if it's already past"""
+    return max(0.0, (due - dt_util.utcnow()).total_seconds())
+
+
 class ApplianceWatcher:
     """The notifications of a cycle, for subclasses that know when one starts and ends"""
 
@@ -286,6 +306,79 @@ class ApplianceWatcher:
         self.snapshot: bool = entry.options.get(CONF_SNAPSHOT, True)
         # what the appliance was last said to be doing, kept while it reports nothing in particular part way through
         self._last_stage: str | None = None
+        # when the cycle under way started, not known of one already under way when first watched
+        self.started_at: datetime | None = None
+        # when the end waited for is due, and the next reminder of it, kept so neither is lost to a restart
+        self._end_due: datetime | None = None
+        self._reminder_due: datetime | None = None
+        # the cycle as kept through a restart of Home Assistant: what was found from before it, what was last kept,
+        # and what is to be written, None till anything has changed
+        self._store: Store[dict[str, Any]] = Store(hass, CYCLE_STORE_VERSION, CYCLE_STORE.format(entry_id=entry.entry_id))
+        self._restored: dict[str, Any] = {}
+        self._kept: dict[str, Any] = {}
+        self._written: dict[str, Any] | None = None
+
+    async def async_load(self) -> None:
+        """What was kept of the cycle before Home Assistant restarted, unless too old to carry on from, as when it
+        has been off for a day"""
+        kept = await self._store.async_load() or {}
+        saved_at = _time(kept.get("saved_at"))
+        if saved_at is not None and (dt_util.utcnow() - saved_at).total_seconds() < CYCLE_KEPT_HOURS * 3600:
+            self._restored = kept
+            self._kept = {key: value for key, value in kept.items() if key != "saved_at"}
+        # written straight away, rather than a moment later, as the appliance is unloaded or Home Assistant stops
+        self.entry.async_on_unload(self._flush)
+        self.entry.async_on_unload(self.hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._stopping))
+
+    @callback
+    def _restore(self) -> bool:
+        """Carry on from what was kept before a restart, saying whether a cycle was under way"""
+        kept = self._restored
+        self.last_program = kept.get("program") or ""
+        self.program_kept = bool(kept.get("program_kept"))
+        self.started_at = _time(kept.get("started_at"))
+        self._reminders_sent = int(kept.get("reminders_sent") or 0)
+        if (due := _time(kept.get("reminder_due"))) is not None:
+            # told straight away if it fell due while Home Assistant was off, once however long that was
+            self._remind_at(due, Context())
+        return bool(kept.get("running"))
+
+    def _phase_data(self) -> dict[str, Any]:
+        """How far the cycle has got, as only some kinds of appliance know"""
+        return {}
+
+    def _worth_keeping(self) -> bool:
+        return self.running or self._end_due is not None or self._reminder_due is not None
+
+    @callback
+    def _save(self) -> None:
+        """Keep the cycle through a restart, written a moment later so that changes close together are written once"""
+        data: dict[str, Any] = {}
+        if self._worth_keeping():
+            data = {
+                "running": self.running,
+                "started_at": _iso(self.started_at),
+                "program": self.last_program,
+                "program_kept": self.program_kept,
+                "end_due": _iso(self._end_due),
+                "reminder_due": _iso(self._reminder_due),
+                "reminders_sent": self._reminders_sent,
+                "phase": self._phase_data(),
+            }
+        if data == self._kept:
+            return
+        self._kept = data
+        # with when it was kept, to know whether it's too old to carry on from
+        written = data | {"saved_at": dt_util.utcnow().isoformat()} if data else {}
+        self._written = written
+        self._store.async_delay_save(lambda: written, CYCLE_SAVE_DELAY)
+
+    async def _flush(self) -> None:
+        if self._written is not None:
+            await self._store.async_save(self._written)
+
+    async def _stopping(self, event: Event) -> None:
+        await self._flush()
 
     @callback
     def async_start(self) -> None:
@@ -334,6 +427,7 @@ class ApplianceWatcher:
 
     def _keep_running(self) -> None:
         self.cycle_stopped = None
+        self._end_due = None
         if self._cancel_end is not None:
             self._cancel_end()
             self._cancel_end = None
@@ -375,6 +469,17 @@ class ApplianceWatcher:
         self.totals = totals
         self._cycle_forgotten()
 
+    @callback
+    def _end_at(self, due: datetime, then: Callable[[Context, datetime], Coroutine[Any, Any, None]], context: Context) -> None:
+        """Wait to see that the appliance doesn't carry on, till a time kept through a restart"""
+        self._end_due = due
+        self._cancel_end = async_call_later(self.hass, _seconds_to(due), partial(then, context))
+
+    @callback
+    def _end_waited(self) -> None:
+        self._cancel_end = None
+        self._end_due = None
+
     def _name_icon(self) -> str:
         return TYPE_ICONS.get(name_type(self.hass, self.name) or "", DEFAULT_ICON)
 
@@ -414,8 +519,10 @@ class ApplianceWatcher:
         self._cycle_began()
         # nothing yet to tell of this one
         self.totals = CycleTotals()
+        self.started_at = dt_util.utcnow()
         # the last cycle's reminders are no use once the next one is under way
         self._stop_reminding()
+        self._save()
         async with self._sending:
             # resent, since to Supernotify a second cycle soon after the first is a repeat to be dropped
             await self._tell(
@@ -483,6 +590,7 @@ class ApplianceWatcher:
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
         notify = finished and self.notify_end
+        self._save()
         await self._tell_ended(notify, title, message, context)
         if finished:
             await self._maintenance_due(context)
@@ -667,22 +775,31 @@ class ApplianceWatcher:
 
     @callback
     def _remind_in(self, minutes: float, context: Context) -> None:
+        self._remind_at(dt_util.utcnow() + timedelta(minutes=minutes), context)
+
+    @callback
+    def _remind_at(self, due: datetime, context: Context) -> None:
         self._stop_reminding()
-        self._cancel_reminder = async_call_later(self.hass, minutes * 60, partial(self._remind, context))
+        self._reminder_due = due
+        self._cancel_reminder = async_call_later(self.hass, _seconds_to(due), partial(self._remind, context))
+        self._save()
 
     @callback
     def _stop_reminding(self) -> None:
+        self._reminder_due = None
         if self._cancel_reminder is not None:
             self._cancel_reminder()
             self._cancel_reminder = None
 
     async def _remind(self, context: Context, now: datetime) -> None:
         self._cancel_reminder = None
+        self._reminder_due = None
         self._reminders_sent += 1
         # Supernotify would drop the same message again as a duplicate
         await self._tell_end(_later(context), resend=True, reminder=True)
         if self.reminder and self._reminders_sent < self.reminder_repeats:
             self._remind_in(self.reminder, context)
+        self._save()
 
     async def _action_pressed(self, event: Event) -> None:
         action = str(event.data.get("action") or "")
@@ -690,6 +807,7 @@ class ApplianceWatcher:
             return
         if action == f"{ACTION_FINISHED}{self.entry.entry_id}":
             self._stop_reminding()
+            self._save()
             await self._supernotify(
                 self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
                 self._text(CONF_END_TITLE, DEFAULT_TITLE),
@@ -1059,6 +1177,17 @@ class HomeConnectWatcher(ApplianceWatcher):
         self.running = state is not None and state.state in STATES_ACTIVE
         # and with no knowing whether its oven has been up to heat, it isn't taken to be warming up
         self.preheated = self.running
+        phase: dict[str, Any] = self._restored.get("phase") or {}
+        if self._restore():
+            # still the cycle under way before Home Assistant restarted, whatever it has done since, so not started again
+            self.running = True
+            self.preheated = bool(phase.get("preheated", True))
+            if (due := _time(self._restored.get("end_due"))) is not None:
+                self._end_at(due, self._settled, Context())
+        elif phase.get("over_by_stage") or phase.get("starting"):
+            # over by its stage while still running, or yet to be told of as started
+            self.running = False
+            self.over_by_stage = bool(phase.get("over_by_stage"))
 
         cycle_entity_ids = [e for e in (self.cycle_entity_id, self.fallback_cycle_entity_id) if e]
         self.entry.async_on_unload(async_track_state_change_event(self.hass, cycle_entity_ids, self._cycle_changed))
@@ -1076,6 +1205,16 @@ class HomeConnectWatcher(ApplianceWatcher):
         ):
             if entity_ids := [ids[key] for ids in (self.entity_ids, self.fallback_ids) for key in keys if key in ids]:
                 self.entry.async_on_unload(async_track_state_change_event(self.hass, entity_ids, listener))
+        if self._restored and state is not None:
+            # whatever it has done while Home Assistant was off, such as finishing, as if it were happening now
+            self.entry.async_create_task(self.hass, self._cycle_is(state.state, Context()), eager_start=False)
+        self._save()
+
+    def _phase_data(self) -> dict[str, Any]:
+        return {"preheated": self.preheated, "over_by_stage": self.over_by_stage, "starting": self.starting}
+
+    def _worth_keeping(self) -> bool:
+        return super()._worth_keeping() or self.over_by_stage or self.starting
 
     def _temperatures(self) -> tuple[float, float] | None:
         """How hot the oven is and how hot it's to be, where both are known"""
@@ -1395,6 +1534,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         else:
             # already hot when it was switched on
             self.preheated = True
+            self._save()
 
     async def _preheat_finished(self, event: Event[EventStateChangedData]) -> None:
         new_state = event.data["new_state"]
@@ -1429,6 +1569,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         """The oven is up to heat, and however its temperature then wanders isn't warming up again till it's been off"""
         self.preheated = True
         self.preheating = False
+        self._save()
         # back to the progress of the program, for an oven with a timer set
         progress = self._progress()
         self.last_progress_mark = -1 if progress is None else self._mark(progress)
@@ -1472,14 +1613,16 @@ class HomeConnectWatcher(ApplianceWatcher):
         await self._cycle_is(state, event.context)
 
     async def _cycle_is(self, state: str, context: Context) -> None:
-        if state in (*STATES_FINISHED, *STATES_SETTLING, *STATES_ABANDONED):
+        if state in (*STATES_FINISHED, *STATES_SETTLING, *STATES_ABANDONED) and self.over_by_stage:
             self.over_by_stage = False
+            self._save()
         if state in STATES_RUN and self.over_by_stage:
             # still running after its stage said it was over, a dryer carrying on as it is, door opened or not
             return
         if state in STATES_RUN:
             # back on within moments of going off, so the same cycle
             self._keep_running()
+            self._save()
             if self.running:
                 if self.shown_paused:
                     # going again, so counting down again
@@ -1490,6 +1633,7 @@ class HomeConnectWatcher(ApplianceWatcher):
                 return
             # a moment for the program and stage, which may come just after, to be what's told
             self.starting = True
+            self._save()
             try:
                 await asyncio.sleep(START_SETTLE)
             finally:
@@ -1497,6 +1641,7 @@ class HomeConnectWatcher(ApplianceWatcher):
             cycle = self._cycle_state()
             if self.running or cycle is None or cycle.state not in STATES_ACTIVE:
                 # over, or started by another report, while it waited
+                self._save()
                 return
             self.running = True
             self._helped = False
@@ -1521,7 +1666,8 @@ class HomeConnectWatcher(ApplianceWatcher):
             await self._problem_check(context)
         elif state in STATES_SETTLING:
             if self._cancel_end is None:
-                self._cancel_end = async_call_later(self.hass, CYCLE_SETTLE, partial(self._settled, context))
+                self._end_at(dt_util.utcnow() + timedelta(seconds=CYCLE_SETTLE), self._settled, context)
+                self._save()
         elif state in STATES_FINISHED:
             await self._cycle_over(True, context)
         elif state in STATES_ABANDONED:
@@ -1574,7 +1720,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         await self._cycle_over(True, context)
 
     async def _settled(self, context: Context, now: datetime) -> None:
-        self._cancel_end = None
+        self._end_waited()
         await self._cycle_over(True, _later(context))
 
     async def _cycle_over(self, finished: bool, context: Context) -> None:
@@ -1606,11 +1752,49 @@ class PowerWatcher(ApplianceWatcher):
 
     @callback
     def async_start(self) -> None:
+        state = self.hass.states.get(self.power_entity_id)
+        drawing = self._drawing(state)
         # a cycle under way at startup still has its Live Activity closed when it ends
-        self.running = self._drawing(self.hass.states.get(self.power_entity_id)) is True
+        self.running = drawing is True
+        if state is None and er.async_get(self.hass).async_get(self.power_entity_id) is None:
+            # the power monitor is gone, so there's nothing to carry on with
+            self._restored = {}
+        phase: dict[str, Any] = self._restored.get("phase") or {}
+        if self._restore():
+            # still the cycle under way before Home Assistant restarted, though it may have stopped since
+            self.running = True
+            self._end_due = _time(self._restored.get("end_due"))
+        elif phase.get("pending"):
+            # not yet long enough to count as a cycle, with the time above the threshold counted through the restart
+            # if it was drawing power all along, and otherwise only up to when it was last seen to
+            self.pending = True
+            self._drawn_for = float(phase.get("drawn_for") or 0)
+            self._end_due = _time(self._restored.get("end_due"))
+            if drawing is True:
+                self._drawing_since = _time(phase.get("drawing_since")) or dt_util.utcnow()
         self.entry.async_on_unload(async_track_state_change_event(self.hass, self.power_entity_id, self._power_changed))
         self.entry.async_on_unload(self._keep_running)
         self.entry.async_on_unload(self._stop_counting)
+        if drawing is True:
+            # drawing power again, the same cycle or one not yet long enough to count, so with no end to wait for
+            self._end_due = None
+            if self.pending:
+                self._count(Context())
+        elif drawing is False and (self.running or self.pending):
+            # at rest, so the end waited for before the restart, or one from now if it stopped while Home Assistant
+            # was off, is due unless it draws power again first
+            self._end_at(self._end_due or self._grace_end(), self._grace_over, Context())
+        # with the power not yet known, whatever it says first decides, an end waited for being due when it was
+        self._save()
+
+    def _phase_data(self) -> dict[str, Any]:
+        return {"pending": self.pending, "drawn_for": self._drawn_for, "drawing_since": _iso(self._drawing_since)}
+
+    def _worth_keeping(self) -> bool:
+        return super()._worth_keeping() or self.pending
+
+    def _grace_end(self) -> datetime:
+        return dt_util.utcnow() + timedelta(seconds=self.grace_period)
 
     def _drawing(self, state: State | None) -> bool | None:
         """Whether more power than the threshold is drawn, None if the power isn't known"""
@@ -1635,30 +1819,38 @@ class PowerWatcher(ApplianceWatcher):
             return
         if drawing:
             self._keep_running()
-            if self.running:
-                return
-            if not self.pending:
-                self.pending = True
-                self._drawn_for = 0
-                # the cycle began as it first drew power, not once it had for long enough to count
-                self._cycle_began()
-            if self._drawing_since is None:
-                # time above the threshold adds up across drop outs, so one in the first minute doesn't start it over
-                self._drawing_since = dt_util.utcnow()
-                remaining = self.min_duration - self._drawn_for
-                if remaining > 0:
-                    self._cancel_start = async_call_later(self.hass, remaining, partial(self._long_enough, event.context))
-                else:
-                    await self._confirmed(event.context)
+            if not self.running:
+                if not self.pending:
+                    self.pending = True
+                    self._drawn_for = 0
+                    # the cycle began as it first drew power, not once it had for long enough to count
+                    self._cycle_began()
+                if self._drawing_since is None:
+                    # time above the threshold adds up across drop outs, so one in the first minute doesn't start it over
+                    self._drawing_since = dt_util.utcnow()
+                    if self.min_duration - self._drawn_for > 0:
+                        self._count(event.context)
+                    else:
+                        await self._confirmed(event.context)
         elif self.running or self.pending:
             self._stop_counting()
             if self._cancel_end is None:
                 self.cycle_stopped = dt_util.utcnow()
-                self._cancel_end = async_call_later(self.hass, self.grace_period, partial(self._grace_over, event.context))
+                # from when it was due before a restart, if it went unseen from then till now
+                self._end_at(self._end_due or self._grace_end(), self._grace_over, event.context)
+        self._save()
+
+    @callback
+    def _count(self, context: Context) -> None:
+        """Wait for the time above the threshold to be long enough for a cycle"""
+        drawing_for = (dt_util.utcnow() - self._drawing_since).total_seconds() if self._drawing_since else 0
+        remaining = self.min_duration - self._drawn_for - drawing_for
+        self._cancel_start = async_call_later(self.hass, max(0.0, remaining), partial(self._long_enough, context))
 
     @callback
     def _keep_running(self) -> None:
         self.cycle_stopped = None
+        self._end_due = None
         if self._cancel_end is not None:
             self._cancel_end()
             self._cancel_end = None
@@ -1688,12 +1880,13 @@ class PowerWatcher(ApplianceWatcher):
         await self._started(context)
 
     async def _grace_over(self, context: Context, now: datetime) -> None:
-        self._cancel_end = None
+        self._end_waited()
         if self.pending:
             _LOGGER.debug("APPLIANCES %s drew power for %.0fs, too short for a cycle", self.name, self._drawn_for)
             self.pending = False
             self._drawn_for = 0
             self._cycle_forgotten()
+            self._save()
             return
         self.running = False
         await self._ended(True, _later(context))
@@ -1734,11 +1927,52 @@ class VacuumWatcher(ApplianceWatcher):
         self._unsure = state is None or state.state in (VACUUM_ERROR, STATE_UNAVAILABLE, STATE_UNKNOWN)
         self.entry.async_on_unload(async_track_state_change_event(self.hass, self.cycle_entity_id, self._activity_changed))
         self.entry.async_on_unload(self._keep_running)
+        if self._restore():
+            self._resume(state)
+        self._save()
+
+    @callback
+    def _resume(self, state: State | None) -> None:
+        """Carry on with the cleaning under way before Home Assistant restarted, without telling of it as started, and
+        with whatever end it was waiting for, unless it has set off again since"""
+        self.running = True
+        self._unsure = False
+        phase: dict[str, Any] = self._restored.get("phase") or {}
+        waiting = phase.get("waiting")
+        kind = tuple(waiting) if isinstance(waiting, list) else waiting
+        due = _time(self._restored.get("end_due"))
+        activity = state.state if state is not None else None
+        if activity in VACUUM_SHOWN:
+            self._shown_activity = activity
+        context = Context()
+        if kind is not None and due is not None and self._still_waiting(kind, activity):
+            self._wait_till(self._stuck_for_good if kind == VACUUM_ERROR else self._settled, kind, context, due)
+        elif activity == VACUUM_ERROR:
+            self._wait(self._stuck_for_good, VACUUM_ERROR, context)
+        elif activity in VACUUM_DONE:
+            # back on its dock while Home Assistant was off, with no knowing how it went back
+            self._wait(self._settled, VACUUM_DONE, context)
+        # cleaning, paused or on its way back is the same cleaning, with nothing yet to wait for
+
+    @staticmethod
+    def _still_waiting(kind: str | tuple[str, ...], activity: str | None) -> bool:
+        """Whether the vacuum is where it was while waiting for the end, or not yet heard from, as it would be if
+        Home Assistant hadn't restarted"""
+        if activity in (None, STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return True
+        if kind == VACUUM_ERROR:
+            return activity == VACUUM_ERROR
+        # an error back on its dock is for its own app to tell, and paused there isn't setting off again
+        return activity in (*VACUUM_DONE, VACUUM_ERROR) or (activity == VACUUM_PAUSED and kind != VACUUM_BLIP_KIND)
+
+    def _phase_data(self) -> dict[str, Any]:
+        return {"waiting": self._pending}
 
     @callback
     def _keep_running(self) -> None:
         self._pending = None
         self.cycle_stopped = None
+        self._end_due = None
         if self._cancel_end is not None:
             self._cancel_end()
             self._cancel_end = None
@@ -1758,6 +1992,7 @@ class VacuumWatcher(ApplianceWatcher):
                 # cleaning since before Home Assistant started, so already told, and its end still to tell
                 self.running = True
                 self._shown_activity = state
+                self._save()
                 return
         if not self.running:
             if state == VACUUM_CLEANING:
@@ -1791,6 +2026,7 @@ class VacuumWatcher(ApplianceWatcher):
         else:
             # cleaning, paused or on its way back is the same cleaning
             self._keep_running()
+            self._save()
             if state in VACUUM_SHOWN and state != self._shown_activity:
                 # what it's doing, with the buttons that go with it
                 self._shown_activity = state
@@ -1837,21 +2073,32 @@ class VacuumWatcher(ApplianceWatcher):
         context: Context,
         delay: float = VACUUM_SETTLE,
     ) -> None:
+        self._wait_till(then, kind, context, dt_util.utcnow() + timedelta(seconds=delay))
+
+    @callback
+    def _wait_till(
+        self,
+        then: Callable[[Context, datetime], Coroutine[Any, Any, None]],
+        kind: str | tuple[str, ...],
+        context: Context,
+        due: datetime,
+    ) -> None:
         self._keep_running()
         self._pending = kind
         # back, or stuck, from now on unless it carries on
         self.cycle_stopped = dt_util.utcnow()
-        self._cancel_end = async_call_later(self.hass, delay, partial(then, context))
+        self._end_at(due, then, context)
+        self._save()
 
     async def _settled(self, context: Context, now: datetime) -> None:
-        self._cancel_end = None
+        self._end_waited()
         self._pending = None
         self.running = False
         await self._ended(True, _later(context))
 
     async def _stuck_for_good(self, context: Context, now: datetime) -> None:
         # stopped where it is, so no end to tell, only that it can't go on without someone
-        self._cancel_end = None
+        self._end_waited()
         self._pending = None
         self.running = False
         await self._ended(False, _later(context))
