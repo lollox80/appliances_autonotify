@@ -7,7 +7,7 @@ title: What's New
  - Finished 30 seconds after docking, rather than 10 minutes, where the vacuum reports its own progress reaching 100%, as Roborock does
  - Kept as one cleaning through a recharge part way through, and finished 30 seconds after docking, where the vacuum has a sensor for whether it's cleaning, as Roborock's *Cleaning* is
  - *Wait on the dock* setting, under *End message*, for how long a vacuum must stay docked before its cleaning is over otherwise, 10 minutes by default
- 
+
 # 0.11.0
 ## ✨ Enhancements
 - Device Usage
