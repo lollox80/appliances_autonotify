@@ -144,6 +144,9 @@ VACUUM_JOB_LEAD: Final[float] = 60
 # how long one stays on its dock with that still on, recharging to carry on, before its cleaning is over regardless
 VACUUM_HELD_SETTLE: Final[int] = 6 * 3600
 VACUUM_HELD_KIND: Final[str] = "held"
+# translation keys of the enum sensor that says what a vacuum is doing, as Roborock's Status does, sweeping or
+# relocating, which the Live Activity says as it goes as an appliance's stage
+VACUUM_STATUS_KEYS: Final[tuple[str, ...]] = ("status",)
 # what each entity made use of does, by its translation key as Home Connect has it: the state of the cycle, how far
 # along it is, when it will finish, and the program
 CYCLE_KEY: Final[str] = "operation_state"

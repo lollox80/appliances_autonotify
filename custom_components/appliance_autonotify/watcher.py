@@ -140,6 +140,7 @@ from .const import (
     VACUUM_PAUSED,
     VACUUM_RETURNING,
     VACUUM_SETTLE,
+    VACUUM_STATUS_KEYS,
 )
 from .dashboards import dashboard_url
 from .discovery import companions, cycle_entities, is_cycle_entity, role_key
@@ -1222,6 +1223,20 @@ class VacuumWatcher(ApplianceWatcher):
             self.entry.async_on_unload(async_track_state_change_event(self.hass, self._runnings, self._running_changed))
             if self.running:
                 self._job = self._running_now(None)
+        status = next(
+            (
+                e.entity_id
+                for e in entities
+                if e.domain == "sensor"
+                and not e.disabled
+                and (e.device_class or e.original_device_class) == SensorDeviceClass.ENUM
+                and e.translation_key in VACUUM_STATUS_KEYS
+            ),
+            None,
+        )
+        if status is not None:
+            self.entity_ids[STAGE_KEY] = status
+            self.entry.async_on_unload(async_track_state_change_event(self.hass, status, self._status_changed))
         self.entry.async_on_unload(self._keep_running)
         if self._restore():
             self._resume(state)
@@ -1274,6 +1289,21 @@ class VacuumWatcher(ApplianceWatcher):
 
     def _phase_data(self) -> dict[str, Any]:
         return {"waiting": self._pending, "complete": self._complete, "job": self._job, "set_off": _iso(self._set_off)}
+
+    async def _status_changed(self, event: Event[EventStateChangedData]) -> None:
+        """The vacuum moving on within its cleaning, such as from sweeping to relocating"""
+        new_state = event.data["new_state"]
+        if not self.running or new_state is None or new_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            return
+        await self._tell_status(event.context)
+
+    async def _tell_status(self, context: Context) -> None:
+        if not supernotify_available(self.hass):
+            return
+        async with self._sending:
+            if self.running and (message := self._stage()):
+                # resent, since it often goes back to what it said before, sweeping again after relocating
+                await self._tell(message, False, context, resend=True)
 
     def _running_now(self, since: datetime | None) -> str | None:
         """Whichever of its running sensors is on as it sets off, having come on with it where that's known"""
@@ -1363,6 +1393,8 @@ class VacuumWatcher(ApplianceWatcher):
                 self._set_off = new_state.last_changed
                 self._job = self._running_now(self._set_off)
                 await self._started(event.context)
+                # already sweeping, most likely, by the time it's said to be cleaning
+                await self._tell_status(event.context)
             return
         old_state = event.data["old_state"]
         if state in VACUUM_DONE:

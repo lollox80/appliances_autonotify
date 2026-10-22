@@ -49,7 +49,13 @@ def add_running(hass: HomeAssistant, device_id: str, key: str) -> str:
 
 
 def add_sensor(
-    hass: HomeAssistant, device_id: str, domain: str, key: str, device_class: str | None, unit: str | None = None
+    hass: HomeAssistant,
+    device_id: str,
+    domain: str,
+    key: str,
+    device_class: str | None,
+    unit: str | None = None,
+    translation_key: str | None = None,
 ) -> str:
     vacuum = next(e for e in er.async_entries_for_device(er.async_get(hass), device_id) if e.domain == "vacuum")
     source = hass.config_entries.async_get_entry(vacuum.config_entry_id or "")
@@ -63,6 +69,7 @@ def add_sensor(
         config_entry=source,
         unit_of_measurement=unit,
         original_device_class=device_class,
+        translation_key=translation_key,
     )
     return entity.entity_id
 
@@ -692,3 +699,45 @@ async def test_vacuum_running_sensor_through_a_restart(hass: HomeAssistant, free
     await set_state(hass, cleaning, "off")
     await advance(hass, freezer, VACUUM_COMPLETE_SETTLE)
     assert len(calls) == 2
+
+
+async def test_vacuum_status_is_said_as_it_goes(hass: HomeAssistant) -> None:
+    """What Roborock's Status says it's doing, sweeping or relocating, is what its Live Activity says, as a stage"""
+    device_id, vacuum = add_vacuum(hass)
+    status = add_sensor(hass, device_id, "sensor", "status", "enum", translation_key="status")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(status, "charging")
+    entry = await setup_vacuum(hass, device_id)
+    tag = f"appliance_{entry.entry_id}"
+
+    # docked, what it's doing is nothing to tell
+    await set_state(hass, status, "sweeping")
+    assert calls == []
+
+    # already sweeping as it's said to be cleaning, so told straight after the start
+    await set_state(hass, vacuum, "cleaning")
+    assert [c.data["message"] for c in calls] == ["Bruno started", "sweeping"]
+    assert calls[1].data["title"] == "Bruno"
+    assert calls[1].data["force_resend"] is True
+    assert calls[1].data["extra_data"] == {
+        "mobile_push_notification_tag": tag,
+        "live_update": True,
+        "notification_icon": ICON,
+        **ANDROID,
+        "silent": True,
+        "alert_once": True,
+    }
+
+    # and again as it goes, back to sweeping after relocating, with nothing said while it can't be heard from
+    for state in ("relocating", "unavailable", "sweeping"):
+        await set_state(hass, status, state)
+    assert [c.data["message"] for c in calls[2:]] == ["relocating", "sweeping"]
+
+    # once its cleaning is over, nothing more
+    await set_state(hass, vacuum, "docked")
+    await set_state(hass, status, "charging")
+    await pass_time(hass, VACUUM_SETTLE)
+    count = len(calls)
+    await set_state(hass, status, "idle")
+    assert len(calls) == count
