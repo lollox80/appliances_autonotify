@@ -59,9 +59,8 @@ from .const import (
     DEFAULT_TITLE,
     DISCOVERY_TITLE,
     DOMAIN,
-    LIVE_DETAIL_TIME,
+    LIVE_DEFAULTS,
     LIVE_DETAILS,
-    LIVE_TITLE_NAME_PROGRAM,
     LIVE_TITLES,
     NAME_PLACEHOLDER,
     PROGRAM_PLACEHOLDER,
@@ -70,6 +69,8 @@ from .const import (
     TYPE_DISCOVERY,
     TYPE_POWER,
     TYPE_VACUUM,
+    VACUUM_LIVE_DEFAULTS,
+    VACUUM_LIVE_DETAILS,
     VACUUM_SETTLE,
 )
 from .dashboards import dashboards
@@ -88,8 +89,7 @@ DEFAULT_CHOICES: dict[str, bool | str] = {
     CONF_NOTIFY_START: False,
     CONF_NOTIFY_END: True,
     CONF_NOTIFY_PROGRESS: False,
-    CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM,
-    CONF_LIVE_DETAIL: LIVE_DETAIL_TIME,
+    **LIVE_DEFAULTS,
 }
 
 DEFAULT_TEXTS: dict[str, str] = {
@@ -109,7 +109,12 @@ def discovery_schema(auto_discover: bool = True) -> vol.Schema:
 
 
 async def settings_schema(
-    hass: HomeAssistant, progress: bool = True, phase: bool | None = None, settle: bool = False
+    hass: HomeAssistant,
+    progress: bool = True,
+    phase: bool | None = None,
+    settle: bool = False,
+    live: bool = True,
+    vacuum: bool = False,
 ) -> vol.Schema:
     fields: dict[vol.Marker, Any] = {
         vol.Required(CONF_NOTIFY_START, default=False): BooleanSelector(),
@@ -120,15 +125,16 @@ async def settings_schema(
         fields[vol.Required(CONF_NOTIFY_PHASE, default=phase)] = BooleanSelector()
     if progress:
         fields[vol.Required(CONF_NOTIFY_PROGRESS, default=False)] = BooleanSelector()
-        if supernotify_available(hass):
-            # only a Live Activity has a title that changes as the cycle goes on, and a timer
-            for key, options, default in (
-                (CONF_LIVE_TITLE, LIVE_TITLES, LIVE_TITLE_NAME_PROGRAM),
-                (CONF_LIVE_DETAIL, LIVE_DETAILS, LIVE_DETAIL_TIME),
-            ):
-                fields[vol.Required(key, default=default)] = SelectSelector(
-                    SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
-                )
+    if live and supernotify_available(hass):
+        # only a Live Activity has a title that changes as the cycle goes on, and a timer, which a vacuum hasn't
+        defaults = VACUUM_LIVE_DEFAULTS if vacuum else LIVE_DEFAULTS
+        for key, options in (
+            (CONF_LIVE_TITLE, LIVE_TITLES),
+            (CONF_LIVE_DETAIL, VACUUM_LIVE_DETAILS if vacuum else LIVE_DETAILS),
+        ):
+            fields[vol.Required(key, default=defaults[key])] = SelectSelector(
+                SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
+            )
     notify: dict[vol.Marker, Any] = {}
     end: dict[vol.Marker, Any] = {
         vol.Optional(CONF_END_TITLE): TextSelector(),
@@ -334,6 +340,8 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         name = self._name()
+        kind = self.config_entry.data.get(CONF_TYPE)
+        vacuum = kind == TYPE_VACUUM
         # as they'll be sent, so there's the real text to edit rather than a template or an empty box
         defaults = {key: text.replace(NAME_PLACEHOLDER, name) for key, text in DEFAULT_TEXTS.items()}
         if user_input is not None:
@@ -341,6 +349,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             unset = (
                 defaults
                 | DEFAULT_CHOICES
+                | (VACUUM_LIVE_DEFAULTS if vacuum else {})
                 | {
                     CONF_NOTIFY_PHASE: self._phase_default(),
                     CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS,
@@ -356,12 +365,15 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 self._settings = settings
                 return await self.async_step_power()
             return self.async_create_entry(data=settings)
-        # a power monitored appliance has no progress to report, nor has a robot vacuum
+        # a power monitored appliance has no progress to report, nor program for a Live Activity, and a robot vacuum's
+        # progress, where it has one, is only for the bar
         schema = await settings_schema(
             self.hass,
-            progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
+            progress=kind not in (TYPE_POWER, TYPE_VACUUM),
             phase=self._phase_default(),
-            settle=self.config_entry.data.get(CONF_TYPE) == TYPE_VACUUM,
+            settle=vacuum,
+            live=kind != TYPE_POWER,
+            vacuum=vacuum,
         )
         shown = dict(self.config_entry.options)
         if shown.get(CONF_DASHBOARD) not in dashboards(self.hass):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
 from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -741,3 +742,91 @@ async def test_vacuum_status_is_said_as_it_goes(hass: HomeAssistant) -> None:
     count = len(calls)
     await set_state(hass, status, "idle")
     assert len(calls) == count
+
+
+def add_roborock(hass: HomeAssistant) -> tuple[str, str, str, str, str]:
+    """A vacuum with Roborock's Status, Cleaning mode and Cleaning progress, returning its device and those entities"""
+    device_id, vacuum = add_vacuum(hass)
+    status = add_sensor(hass, device_id, "sensor", "status", "enum", translation_key="status")
+    mode = add_sensor(hass, device_id, "select", "cleaning_mode", None, translation_key="cleaning_mode")
+    progress = add_sensor(hass, device_id, "sensor", "cleaning_progress", None, "%", translation_key="clean_percent")
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(status, "charging")
+    hass.states.async_set(mode, "vac_and_mop")
+    # as left by the cleaning before
+    hass.states.async_set(progress, "100")
+    return device_id, vacuum, status, mode, progress
+
+
+async def test_vacuum_shows_its_cleaning_mode_status_and_progress(hass: HomeAssistant) -> None:
+    """Its cleaning mode is its program, said with its status unless chosen otherwise, under its name alone, with its
+    own progress on the bar once that's no longer what the cleaning before left"""
+    device_id, vacuum, status, _, progress = add_roborock(hass)
+    calls = mock_supernotify(hass)
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, status, "sweeping")
+    await set_state(hass, vacuum, "cleaning")
+    assert [(c.data["title"], c.data["message"]) for c in calls] == [
+        ("Bruno", "Bruno started"),
+        ("Bruno", "vac_and_mop · sweeping"),
+    ]
+    # the 100 left from before is no progress of this cleaning
+    assert all("progress" not in c.data["extra_data"] for c in calls)
+
+    await set_state(hass, progress, "0")
+    assert calls[-1].data["message"] == "vac_and_mop · sweeping"
+    assert (calls[-1].data["extra_data"]["progress"], calls[-1].data["extra_data"]["critical_text"]) == (0, "0%")
+    await set_state(hass, progress, "3")
+    assert len(calls) == 3
+    await set_state(hass, progress, "5")
+    assert len(calls) == 4
+    await set_state(hass, status, "relocating")
+    assert (calls[-1].data["message"], calls[-1].data["extra_data"]["progress"]) == ("vac_and_mop · relocating", 5)
+
+
+@pytest.mark.parametrize(
+    ("detail", "title", "message"),
+    [
+        ("status", "Bruno · vac_and_mop", "sweeping"),
+        # with the mode in the message there's no need for it in the title too
+        ("program_status", "Bruno", "vac_and_mop · sweeping"),
+        ("program", "Bruno", "vac_and_mop"),
+    ],
+)
+async def test_vacuum_title_can_have_its_cleaning_mode(hass: HomeAssistant, detail: str, title: str, message: str) -> None:
+    device_id, vacuum, status, _, _ = add_roborock(hass)
+    calls = mock_supernotify(hass)
+    await setup_vacuum(hass, device_id, live_title="name_program", live_detail=detail)
+
+    await set_state(hass, status, "sweeping")
+    await set_state(hass, vacuum, "cleaning")
+    assert (calls[-1].data["title"], calls[-1].data["message"]) == (title, message)
+
+
+async def test_vacuum_live_activity_settings(hass: HomeAssistant) -> None:
+    """A vacuum has no time left to show, and its own choices unless chosen otherwise, which aren't kept as settings"""
+    device_id, _, _, _, _ = add_roborock(hass)
+    mock_supernotify(hass)
+    entry = await setup_vacuum(hass, device_id)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["data_schema"] is not None
+    fields = {str(k): k for k in result["data_schema"].schema}
+    assert "notify_progress" not in fields
+    assert (fields["live_title"].default(), fields["live_detail"].default()) == ("name", "program_status")
+    detail = result["data_schema"].schema[fields["live_detail"]]
+    assert detail.config["options"] == ["program_status", "status", "program"]
+
+    form: dict[str, object] = {"start": {}, "end": {}, "notify": {}}
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], form | {"live_title": "name", "live_detail": "program_status"}
+    )
+    await hass.async_block_till_done()
+    assert entry.options == {}
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], form | {"live_title": "name_program", "live_detail": "status"}
+    )
+    await hass.async_block_till_done()
+    assert entry.options == {"live_title": "name_program", "live_detail": "status"}

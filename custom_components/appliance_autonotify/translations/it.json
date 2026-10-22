@@ -75,7 +75,7 @@
                     "dashboard": "Aperta quando si tocca una notifica o la Live Activity. Lascia vuoto per aprire l'app dove si trovava. Impostata su una dashboard con il nome dell'elettrodomestico o del suo tipo, ad esempio \"Lavastoviglie\" o \"Lavatrice\", se ce n'era una quando l'elettrodomestico è stato aggiunto.",
                     "notify_progress": "Invia una notifica ogni 10% del ciclo. Se disattivato, l'avanzamento compare solo nella barra della Live Activity, aggiornata senza suono.",
                     "live_title": "Il titolo della Live Activity. Il programma accanto al nome è utile quando il tempo residuo prende il posto del messaggio, come nella schermata di blocco dell'iPhone. Scegli solo il nome se i nomi dei programmi sono troppo lunghi, o se l'elettrodomestico usa sempre lo stesso programma.",
-                    "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure il programma al suo posto. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio."
+                    "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure al suo posto il programma, lo stato, cioè cosa sta facendo nel ciclo, come l'asciugatura o un robot aspirapolvere che si riposiziona, o entrambi. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio, e per un robot aspirapolvere è la modalità di pulizia. Ciò che l'elettrodomestico non indica viene omesso."
                 },
                 "sections": {
                     "start": {
@@ -168,7 +168,9 @@
         "live_detail": {
             "options": {
                 "time_remaining": "Tempo residuo",
-                "program": "Programma"
+                "program": "Programma",
+                "status": "Stato",
+                "program_status": "Programma e stato"
             }
         }
     }

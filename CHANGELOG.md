@@ -1,6 +1,20 @@
 ---
 title: What's New
 ---
+
+# 0.13.0
+## ✨ Enhancements
+- A cycle under way survives a Home Assistant restart
+  -  Carries on from where it was, unless Home Assistant has been off for more than a day
+- Live Activity can now also be appliance status where provided, or combined status/programme, e.g. "Vac and Mop · Repositioning"
+- Robot Vacuums
+  - Use progress percentage where available to show live progress
+  - Use the `cleaning_mode` where available as the program
+  - Use the `status` where available as the status, such as *Sweeping* or *Relocating*
+  - *Live Activity title* and *Live Activity shows* offered for vacuums, *Appliance name only* and *Program and status* by default
+- *Live Activity shows* as *Program* now shows the program even where the appliance also reports a status
+- With no timer, *Appliance name and program* puts the program in the title where the message doesn't already say it
+
 # 0.12.0
 ## ✨ Enhancements
 - Robot Vacuums

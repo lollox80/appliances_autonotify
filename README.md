@@ -73,6 +73,9 @@ Paused, or on its way back, it's still the same cleaning too, and paused once
 back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
 report a past error again for a while as they reconnect, with the vacuum carrying on.
 
+Where the vacuum's integration reports them, as Roborock's does, its *Cleaning mode* is its program, its *Status*, such as sweeping or relocating, is its status, and its *Cleaning progress* fills the bar of the Live Activity,
+once it has dropped from the 100% left by the cleaning before. A vacuum has no time left to show, so its *Live Activity shows* is the *Program and status* by default, such as "Vac and mop · Sweeping", and its *Live Activity title* the *Appliance name only*.
+
 ### Power Monitored Appliances
 
 An appliance with no supported integration can be added if a sensor measures the power it draws.
@@ -115,7 +118,7 @@ Nothing needs changing for notifications to work. Each appliance on the integrat
   - off by default, switch on to get the percentage or ETA regularly notified
 - a choice of *Live Activity title* and of what the *Live Activity shows*
   - Choose to have the main title be the appliance name and the programme name ("Dishwashed Intensive 70C"), or only the appliance name or programme
-  - Choose to have the 2nd line of live activity be the countdown clock or programme name
+  - Choose to have the 2nd line of live activity be the countdown clock, the programme name, the status, such as "Drying" or "Relocating", or the programme and status together
   - Supernotify required for these options
 - *Dashboard to open*
   - when a notification or the Live Activity is tapped.
@@ -130,7 +133,9 @@ With *Notify start* or *Notify end* off, that notification isn't sent, but the L
 | End message          | The same for when it finishes, such as "Dishwasher is finished". With Supernotify, also a *Reminder*, see below |
 | Notification targets | With Supernotify, *Targets* is the same choice of entities, devices, areas, floors and labels as any Supernotify notification, *Custom targets* is for those outside Home Assistant, such as e-mail addresses or phone numbers, and *Deliveries* limits notifications to those chosen. Leave them empty for Supernotify to choose. Without Supernotify, *Targets* is a choice of notify entities, and left empty means every phone with the Home Assistant app |
 
-*Live Activity shows* is the *Time remaining* by default, where the appliance reports when it will finish, or the *Program* in its place. The program can be the whole cycle, or a phase of it, such as a pre-heat or a pre-rinse, so for some appliances it says more than the time left.
+*Live Activity shows* is the *Time remaining* by default, where the appliance reports when it will finish, or in its place the *Program*, the *Status*, or the *Program and status*, such as "Vac and mop · Sweeping". The program can be the whole cycle, or a phase of it, such as a pre-heat or a pre-rinse, so for some appliances it says more than the time left. The status is what the appliance is doing within its cycle, such as a dryer drying then cooling. Where the appliance reports only one of them, that one is shown.
+
+With no timer, the message is seen, so *Appliance name and program* puts the program in the title only where the message doesn't already say it, such as "Jill · Vac and mop" over "Sweeping" with *Status* chosen.
 
 On the Lock Screen of an iPhone the timer takes the place of the message, which is where the program otherwise goes,
 so while there's a time left to show, *Live Activity title* is *Appliance name and program* by default, such as

@@ -30,11 +30,23 @@ LIVE_TITLE_PROGRAM: Final[str] = "program"
 LIVE_TITLE_NAME: Final[str] = "name"
 LIVE_TITLES: Final[tuple[str, ...]] = (LIVE_TITLE_NAME_PROGRAM, LIVE_TITLE_PROGRAM, LIVE_TITLE_NAME)
 # what a Live Activity shows in place of its message, the time left where the appliance reports a finish time, or
-# the program, for an appliance whose program is always the same and so not worth the title
+# the program, for an appliance whose program is always the same and so not worth the title, or its status, what it's
+# doing within its cycle, or both of those
 CONF_LIVE_DETAIL: Final[str] = "live_detail"
 LIVE_DETAIL_TIME: Final[str] = "time_remaining"
 LIVE_DETAIL_PROGRAM: Final[str] = "program"
-LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM)
+LIVE_DETAIL_STATUS: Final[str] = "status"
+LIVE_DETAIL_PROGRAM_STATUS: Final[str] = "program_status"
+LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM, LIVE_DETAIL_STATUS, LIVE_DETAIL_PROGRAM_STATUS)
+# a robot vacuum has no time left to show
+VACUUM_LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_PROGRAM_STATUS, LIVE_DETAIL_STATUS, LIVE_DETAIL_PROGRAM)
+# the title and what's shown unless chosen otherwise, a vacuum with no timer saying both its cleaning mode and what
+# it's doing in its message, so needing no more than its name for a title
+LIVE_DEFAULTS: Final[dict[str, str]] = {CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM, CONF_LIVE_DETAIL: LIVE_DETAIL_TIME}
+VACUUM_LIVE_DEFAULTS: Final[dict[str, str]] = {
+    CONF_LIVE_TITLE: LIVE_TITLE_NAME,
+    CONF_LIVE_DETAIL: LIVE_DETAIL_PROGRAM_STATUS,
+}
 # the switch the title choice took over from, off being the name only
 CONF_PROGRAM_IN_TITLE: Final[str] = "program_in_title"
 # path of the dashboard opened by a tap on a notification, the app is opened where it was last if there's none
@@ -106,6 +118,8 @@ PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
 STUCK_MESSAGES: Final[dict[str, str]] = {"en": "{name} needs help", "it": "{name} ha bisogno di aiuto"}
 # the title of a Live Activity with a timer, which iOS shows on the Lock Screen in place of the message
 LIVE_TITLE: Final[str] = "{title} · {phase}"
+# the program and the status together, as the Live Activity shows them
+LIVE_PROGRAM_STATUS: Final[str] = "{program} · {status}"
 # what an oven up to heat is doing, and how hot it is
 OVEN_MESSAGE: Final[str] = "{program}, {current}{unit}"
 SUPERNOTIFY_PRESENT: Final[str] = "Supernotify is installed, so mobile apps will show a Live Activity for each cycle."
@@ -147,6 +161,12 @@ VACUUM_HELD_KIND: Final[str] = "held"
 # translation keys of the enum sensor that says what a vacuum is doing, as Roborock's Status does, sweeping or
 # relocating, which the Live Activity says as it goes as an appliance's stage
 VACUUM_STATUS_KEYS: Final[tuple[str, ...]] = ("status",)
+# translation keys of the select of how a vacuum cleans, as Roborock's Cleaning mode is, vacuuming or mopping or both,
+# which is its program
+VACUUM_PROGRAM_KEYS: Final[tuple[str, ...]] = ("cleaning_mode",)
+# translation keys of a vacuum's progress, as Roborock's Cleaning progress is, which it leaves at 100 from the cleaning
+# before till a moment after setting off
+VACUUM_PROGRESS_KEYS: Final[tuple[str, ...]] = ("clean_percent",)
 # what each entity made use of does, by its translation key as Home Connect has it: the state of the cycle, how far
 # along it is, when it will finish, and the program
 CYCLE_KEY: Final[str] = "operation_state"

@@ -75,7 +75,7 @@
                     "dashboard": "Opened when a notification or the Live Activity is tapped. Leave empty to open the app where it was. Set to a dashboard named for the appliance or its type, such as \"Dishwasher\" or \"Washing Machine\", if there was one when the appliance was added.",
                     "notify_progress": "Send a notification every 10% of the cycle. When off, progress is only shown on the progress bar of the Live Activity, which is updated silently.",
                     "live_title": "What the Live Activity is titled with. The program is useful beside the name when the time left takes the place of the message, as it does on an iPhone's Lock Screen. Choose the name only if the program names are too long to fit, or if the appliance is always on the same program.",
-                    "live_detail": "Show the time left, where the appliance reports when it will finish, or the program in its place. The program can be the whole cycle, or a phase of it, such as a pre-rinse."
+                    "live_detail": "Show the time left, where the appliance reports when it will finish, or in its place the program, the status, which is what it's doing within its cycle, such as drying or a robot vacuum relocating, or both. The program can be the whole cycle, or a phase of it, such as a pre-rinse, and for a robot vacuum is its cleaning mode. Whichever the appliance doesn't report is left out."
                 },
                 "sections": {
                     "start": {
@@ -168,7 +168,9 @@
         "live_detail": {
             "options": {
                 "time_remaining": "Time remaining",
-                "program": "Program"
+                "program": "Program",
+                "status": "Status",
+                "program_status": "Program and status"
             }
         }
     }

@@ -81,12 +81,14 @@ from .const import (
     FAST_PREHEAT_PHASE,
     FINISH_TIME_KEY,
     KEY_TYPE_PREFIXES,
+    LIVE_DEFAULTS,
     LIVE_DETAIL_PROGRAM,
+    LIVE_DETAIL_PROGRAM_STATUS,
     LIVE_DETAIL_TIME,
+    LIVE_PROGRAM_STATUS,
     LIVE_SETTLE,
     LIVE_TITLE,
     LIVE_TITLE_NAME,
-    LIVE_TITLE_NAME_PROGRAM,
     LIVE_TITLE_PROGRAM,
     MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
@@ -135,9 +137,12 @@ from .const import (
     VACUUM_HELD_KIND,
     VACUUM_HELD_SETTLE,
     VACUUM_JOB_LEAD,
+    VACUUM_LIVE_DEFAULTS,
     VACUUM_MIDWAY_KIND,
     VACUUM_MIDWAY_SETTLE,
     VACUUM_PAUSED,
+    VACUUM_PROGRAM_KEYS,
+    VACUUM_PROGRESS_KEYS,
     VACUUM_RETURNING,
     VACUUM_SETTLE,
     VACUUM_STATUS_KEYS,
@@ -178,6 +183,8 @@ def _seconds_to(due: datetime) -> float:
 class ApplianceWatcher:
     """The notifications of a cycle, for subclasses that know when one starts and ends"""
 
+    live_defaults: dict[str, str] = LIVE_DEFAULTS
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
@@ -197,8 +204,8 @@ class ApplianceWatcher:
         self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
-        self.live_title: str = entry.options.get(CONF_LIVE_TITLE, LIVE_TITLE_NAME_PROGRAM)
-        self.live_detail: str = entry.options.get(CONF_LIVE_DETAIL, LIVE_DETAIL_TIME)
+        self.live_title: str = entry.options.get(CONF_LIVE_TITLE, self.live_defaults[CONF_LIVE_TITLE])
+        self.live_detail: str = entry.options.get(CONF_LIVE_DETAIL, self.live_defaults[CONF_LIVE_DETAIL])
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
         # the program of the cycle just over, kept for its reminders, since an appliance may by then have gone back
@@ -395,11 +402,18 @@ class ApplianceWatcher:
 
     def _live_title(self, title: str, message: str, timer: bool) -> tuple[str, str]:
         """The title of a quiet Live Activity update as chosen, and its message, which needn't say the program again"""
-        phase = self._title_phase()
-        # with no timer the message is seen, and says what it's doing itself
-        if not timer or self.live_title == LIVE_TITLE_NAME or not phase or phase in title:
+        if self.live_title == LIVE_TITLE_NAME:
             return title, message
-        # with a timer there's no message on the iOS Lock Screen, so what it's doing goes in the title
+        if timer:
+            # with a timer there's no message on the iOS Lock Screen, so what it's doing goes in the title
+            phase = self._title_phase()
+        else:
+            # with no timer the message is seen, so the title has only the program, where the message doesn't say it
+            phase = self._program()
+            if phase and phase in message:
+                return title, message
+        if not phase or phase in title:
+            return title, message
         if message == phase and (progress := self._progress()) is not None:
             message = self._progress_message(progress)
         if self.live_title == LIVE_TITLE_PROGRAM:
@@ -550,8 +564,14 @@ class ApplianceWatcher:
         return PROGRESS_MESSAGE.format(progress=progress)
 
     def _phase(self) -> str | None:
-        """What the appliance is doing, to say alongside a bar that already shows how far along it is"""
-        return self._stage() or self._program()
+        """What the appliance is doing, to say alongside a bar that already shows how far along it is, as the Live
+        Activity is chosen to show it, or else whichever of its status and program it reports"""
+        program, stage = self._program(), self._stage()
+        if self.live_detail == LIVE_DETAIL_PROGRAM:
+            return program or stage
+        if self.live_detail == LIVE_DETAIL_PROGRAM_STATUS and program and stage and stage != program:
+            return LIVE_PROGRAM_STATUS.format(program=program, status=stage)
+        return stage or program
 
     def _stage(self) -> str | None:
         """What the appliance is doing within its cycle, where its integration tells"""
@@ -603,7 +623,7 @@ class ApplianceWatcher:
             data["progress_max"] = 100
         state = self._state(FINISH_TIME_KEY)
         finish_time = dt_util.parse_datetime(state.state) if state is not None else None
-        if finish_time is not None and self.live_detail != LIVE_DETAIL_PROGRAM:
+        if finish_time is not None and self.live_detail == LIVE_DETAIL_TIME:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
         elif progress is not None:
@@ -1165,6 +1185,8 @@ class PowerWatcher(ApplianceWatcher):
 class VacuumWatcher(ApplianceWatcher):
     """A robot vacuum of any make, whose cleaning is the cycle, from setting off till it's back or stopped by itself"""
 
+    live_defaults = VACUUM_LIVE_DEFAULTS
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, entry)
         self._cancel_end: CALLBACK_TYPE | None = None
@@ -1182,6 +1204,8 @@ class VacuumWatcher(ApplianceWatcher):
         self._job: str | None = None
         self._runnings: list[str] = []
         self._set_off: datetime | None = None
+        # its progress has dropped below 100 since it set off, so isn't what the cleaning before left
+        self._progressing = False
 
     @callback
     def async_start(self) -> None:
@@ -1223,23 +1247,25 @@ class VacuumWatcher(ApplianceWatcher):
             self.entry.async_on_unload(async_track_state_change_event(self.hass, self._runnings, self._running_changed))
             if self.running:
                 self._job = self._running_now(None)
-        status = next(
-            (
-                e.entity_id
-                for e in entities
-                if e.domain == "sensor"
-                and not e.disabled
-                and (e.device_class or e.original_device_class) == SensorDeviceClass.ENUM
-                and e.translation_key in VACUUM_STATUS_KEYS
-            ),
-            None,
-        )
-        if status is not None:
-            self.entity_ids[STAGE_KEY] = status
-            self.entry.async_on_unload(async_track_state_change_event(self.hass, status, self._status_changed))
+        for key, domain, keys in (
+            (STAGE_KEY, "sensor", VACUUM_STATUS_KEYS),
+            (PROGRAM_KEYS[-1], "select", VACUUM_PROGRAM_KEYS),
+            (PROGRESS_KEY, "sensor", VACUUM_PROGRESS_KEYS),
+        ):
+            if found := next(
+                (e.entity_id for e in entities if e.domain == domain and not e.disabled and e.translation_key in keys), None
+            ):
+                self.entity_ids[key] = found
+        if STAGE_KEY in self.entity_ids:
+            self.entry.async_on_unload(
+                async_track_state_change_event(self.hass, self.entity_ids[STAGE_KEY], self._status_changed)
+            )
         self.entry.async_on_unload(self._keep_running)
         if self._restore():
             self._resume(state)
+        if self.running:
+            # cleaning since before Home Assistant started, with whatever progress it has
+            self._progressing = (progress := self._number(PROGRESS_KEY)) is not None and progress < 100
         self._save()
 
     @callback
@@ -1301,7 +1327,7 @@ class VacuumWatcher(ApplianceWatcher):
         if not supernotify_available(self.hass):
             return
         async with self._sending:
-            if self.running and (message := self._stage()):
+            if self.running and (message := self._phase()):
                 # resent, since it often goes back to what it said before, sweeping again after relocating
                 await self._tell(message, False, context, resend=True)
 
@@ -1353,6 +1379,8 @@ class VacuumWatcher(ApplianceWatcher):
             return
         if value < 100:
             self._complete = False
+            if event.data["entity_id"] == self.entity_ids.get(PROGRESS_KEY):
+                self._progressing = True
         elif before is not None and before < 100 and not self._complete:
             _LOGGER.debug("APPLIANCES %s vacuum %s reached 100%%", self.name, event.data["entity_id"])
             self._complete = True
@@ -1360,6 +1388,12 @@ class VacuumWatcher(ApplianceWatcher):
                 # already back, and now done by its own account
                 self._wait(self._settled, VACUUM_COMPLETE_KIND, event.context, VACUUM_COMPLETE_SETTLE)
         self._save()
+        if event.data["entity_id"] == self.entity_ids.get(PROGRESS_KEY):
+            await self._progress_changed(event)
+
+    def _progress(self) -> int | None:
+        """Its progress, once it's no longer the 100 the cleaning before left"""
+        return super()._progress() if self._progressing else None
 
     @callback
     def _keep_running(self) -> None:
@@ -1390,6 +1424,8 @@ class VacuumWatcher(ApplianceWatcher):
             if state == VACUUM_CLEANING:
                 self.running = True
                 self._complete = False
+                self._progressing = False
+                self.last_progress_mark = -1
                 self._set_off = new_state.last_changed
                 self._job = self._running_now(self._set_off)
                 await self._started(event.context)
