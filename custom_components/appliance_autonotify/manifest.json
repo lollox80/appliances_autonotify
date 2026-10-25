@@ -6,7 +6,7 @@
         "supernotify"
     ],
     "codeowners": [
-        "@jey"
+        "@jeyrb"
     ],
     "config_flow": true,
     "dependencies": [
