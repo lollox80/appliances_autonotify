@@ -8,6 +8,7 @@ from homeassistant.const import CONF_TYPE, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.storage import Store
 
 from .compat import vol
 from .const import (
@@ -15,6 +16,8 @@ from .const import (
     CONF_DASHBOARD_FOUND,
     CONF_LIVE_TITLE,
     CONF_PROGRAM_IN_TITLE,
+    CYCLE_STORE,
+    CYCLE_STORE_VERSION,
     DOMAIN,
     LIVE_TITLE_NAME,
     MAINTENANCE_SNOOZE_DAYS,
@@ -123,6 +126,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) -
         return True
     watchers: dict[str | None, type[ApplianceWatcher]] = {TYPE_POWER: PowerWatcher, TYPE_VACUUM: VacuumWatcher}
     watcher = watchers.get(entry.data.get(CONF_TYPE), HomeConnectWatcher)(hass, entry)
+    # a cycle under way before Home Assistant restarted, to carry on with as it starts
+    await watcher.async_load()
     watcher.async_start()
     watcher.async_listen_for_actions()
     watcher.async_start_maintenance()
@@ -153,3 +158,5 @@ async def async_remove_entry(hass: HomeAssistant, entry: AppliancesConfigEntry) 
     # what was counted goes with the appliance
     if (tracker := hass.data.get(DATA_MAINTENANCE)) is not None:
         tracker.async_forget(entry.entry_id)
+    # whatever was kept of its cycle through a restart
+    await Store(hass, CYCLE_STORE_VERSION, CYCLE_STORE.format(entry_id=entry.entry_id)).async_remove()

@@ -30,11 +30,23 @@ LIVE_TITLE_PROGRAM: Final[str] = "program"
 LIVE_TITLE_NAME: Final[str] = "name"
 LIVE_TITLES: Final[tuple[str, ...]] = (LIVE_TITLE_NAME_PROGRAM, LIVE_TITLE_PROGRAM, LIVE_TITLE_NAME)
 # what a Live Activity shows in place of its message, the time left where the appliance reports a finish time, or
-# the program, for an appliance whose program is always the same and so not worth the title
+# the program, for an appliance whose program is always the same and so not worth the title, or its status, what it's
+# doing within its cycle, or both of those
 CONF_LIVE_DETAIL: Final[str] = "live_detail"
 LIVE_DETAIL_TIME: Final[str] = "time_remaining"
 LIVE_DETAIL_PROGRAM: Final[str] = "program"
-LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM)
+LIVE_DETAIL_STATUS: Final[str] = "status"
+LIVE_DETAIL_PROGRAM_STATUS: Final[str] = "program_status"
+LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM, LIVE_DETAIL_STATUS, LIVE_DETAIL_PROGRAM_STATUS)
+# a robot vacuum has no time left to show
+VACUUM_LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_PROGRAM_STATUS, LIVE_DETAIL_STATUS, LIVE_DETAIL_PROGRAM)
+# the title and what's shown unless chosen otherwise, a vacuum with no timer saying both its cleaning mode and what
+# it's doing in its message, so needing no more than its name for a title
+LIVE_DEFAULTS: Final[dict[str, str]] = {CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM, CONF_LIVE_DETAIL: LIVE_DETAIL_TIME}
+VACUUM_LIVE_DEFAULTS: Final[dict[str, str]] = {
+    CONF_LIVE_TITLE: LIVE_TITLE_NAME,
+    CONF_LIVE_DETAIL: LIVE_DETAIL_PROGRAM_STATUS,
+}
 # how a Live Activity counts how far along it is, by percentage, or for a 3D printer by layer
 CONF_LIVE_COUNT: Final[str] = "live_count"
 LIVE_COUNT_PERCENT: Final[str] = "percent"
@@ -229,6 +241,8 @@ PROBLEM_SETTLE: Final[float] = 5
 LAYER_REFRESH: Final[float] = 60
 # the title of a Live Activity with a timer, which iOS shows on the Lock Screen in place of the message
 LIVE_TITLE: Final[str] = "{title} · {phase}"
+# the program and the status together, as the Live Activity shows them
+LIVE_PROGRAM_STATUS: Final[str] = "{program} · {status}"
 # what an oven up to heat is doing, and how hot it is
 OVEN_MESSAGE: Final[str] = "{program}, {current}{unit}"
 SUPERNOTIFY_PRESENT: Final[str] = "Supernotify is installed, so mobile apps will show a Live Activity for each cycle."
@@ -258,6 +272,26 @@ VACUUM_BLIP: Final[float] = 5
 VACUUM_BLIP_KIND: Final[str] = "blip"
 # how long such a report is left before the cleaning is taken to be over, with nothing else heard from the vacuum
 VACUUM_BLIP_SETTLE: Final[int] = 3 * 3600
+# how long one stays on its dock once its own progress has reached the end of the cleaning, as Roborock reports it,
+# before its cleaning is over, there being no more to set off again for
+VACUUM_COMPLETE_SETTLE: Final[int] = 30
+VACUUM_COMPLETE_KIND: Final[str] = "complete"
+# seconds either side of setting off within which a running sensor of the vacuum's coming on is taken for its cleaning,
+# as Roborock's Cleaning is, which stays on through a recharge part way through and goes off only once it's over, where
+# its mop drying, also a running sensor, only comes on after
+VACUUM_JOB_LEAD: Final[float] = 60
+# how long one stays on its dock with that still on, recharging to carry on, before its cleaning is over regardless
+VACUUM_HELD_SETTLE: Final[int] = 6 * 3600
+VACUUM_HELD_KIND: Final[str] = "held"
+# translation keys of the enum sensor that says what a vacuum is doing, as Roborock's Status does, sweeping or
+# relocating, which the Live Activity says as it goes as an appliance's stage
+VACUUM_STATUS_KEYS: Final[tuple[str, ...]] = ("status",)
+# translation keys of the select of how a vacuum cleans, as Roborock's Cleaning mode is, vacuuming or mopping or both,
+# which is its program
+VACUUM_PROGRAM_KEYS: Final[tuple[str, ...]] = ("cleaning_mode",)
+# translation keys of a vacuum's progress, as Roborock's Cleaning progress is, which it leaves at 100 from the cleaning
+# before till a moment after setting off
+VACUUM_PROGRESS_KEYS: Final[tuple[str, ...]] = ("clean_percent",)
 # what each entity made use of does, by its translation key as Home Connect has it: the state of the cycle, how far
 # along it is, when it will finish, and the program
 CYCLE_KEY: Final[str] = "operation_state"
@@ -380,6 +414,13 @@ START_SETTLE: Final[float] = 3
 # seconds a Live Activity is left to open before anything more is sent to it, since a push sent straight after the
 # start can reach a phone ahead of it, and then be overwritten by the start, with no bar and no program
 LIVE_SETTLE: Final[float] = 5
+# where a cycle under way is kept through a restart of Home Assistant, one store for each appliance
+CYCLE_STORE: Final[str] = f"{DOMAIN}.cycle.{{entry_id}}"
+CYCLE_STORE_VERSION: Final[int] = 1
+# seconds a change waits to be saved, so a few close together are written once
+CYCLE_SAVE_DELAY: Final[float] = 1
+# hours after which a cycle kept is too old to carry on from, as when Home Assistant has been off since
+CYCLE_KEPT_HOURS: Final[float] = 24
 # the cycle is over without finishing, so the Live Activity goes without an end notification
 STATES_ABANDONED: Final[tuple[str, ...]] = ("error", "aborting", "failed")
 

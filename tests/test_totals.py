@@ -20,6 +20,7 @@ from custom_components.appliance_autonotify.totals import (
 )
 
 from .conftest import mock_supernotify
+from .test_restart import restart
 from .test_vacuum import add_vacuum, advance, setup_vacuum
 from .test_watcher import set_state, setup_power_watcher
 
@@ -283,3 +284,54 @@ async def test_nothing_counted_leaves_its_line_out(hass: HomeAssistant, freezer:
     await set_state(hass, vacuum, "docked")
     await advance(hass, freezer, VACUUM_SETTLE)
     assert calls[-1].data["message"] == "Done\n⏱ 20 min"
+
+
+async def test_totals_carried_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """The wash of 24/10, had Home Assistant restarted part way through it: timed from when it began and metered from
+    the reading then, as if it hadn't"""
+    await hass.config.async_set_time_zone("Europe/Rome")
+    freezer.move_to("2026-10-24T20:44:55+00:00")
+    hass.config.currency = "EUR"
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    with priced(hass, {"type": "grid", "number_energy_price": 0.25, "entity_energy_price": None}):
+        entry = await setup_power_watcher(hass, grace_period=120, end_message="{start_time} · {duration} · {energy} · {cost}")
+        await set_state(hass, POWER, "1800")
+        await tick(hass, freezer, 40 * 60)
+        await restart(hass, entry, freezer, off_for=60)
+        await tick(hass, freezer, 36 * 60)
+        hass.states.async_set(ENERGY, "100.77", hass.states.get(ENERGY).attributes)
+        await set_state(hass, POWER, "0")
+        await tick(hass, freezer, 120)
+    assert calls[-1].data["message"] == "22:44 · 1 h 17 min · 0.77 kWh · 0.19 €"
+
+
+async def test_totals_up_to_the_stop_before_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Stopped before Home Assistant restarted in the wait to see it doesn't carry on, so timed till then"""
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, grace_period=120, end_message="{duration}")
+    await set_state(hass, POWER, "1800")
+    await tick(hass, freezer, 50 * 60)
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 30)
+    await restart(hass, entry, freezer, off_for=20)
+    await tick(hass, freezer, 70)
+    assert calls[-1].data["message"] == "50 min"
+
+
+async def test_vacuum_timed_till_back_before_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    device_id, vacuum = add_vacuum(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    entry = await setup_vacuum(hass, device_id, end_message="{name}: {duration}")
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 1800)
+    await set_state(hass, vacuum, "returning")
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 60)
+    await restart(hass, entry, freezer, off_for=60)
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert calls[-1].data["message"] == "Bruno: 30 min"

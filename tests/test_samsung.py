@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -23,9 +23,6 @@ from custom_components.appliance_autonotify.discovery import find_appliances
 from .conftest import mock_supernotify
 from .test_config_flow import start_discovery
 from .test_watcher import ended, pass_time, set_state
-
-if TYPE_CHECKING:
-    import pytest
 
 DRYER = "e0e642fe-074f-343c-a118-dd5b73b7c5e0"
 FRIDGE = "f4a57510-53ce-ed03-a6d2-3fffb364fad0"
@@ -385,3 +382,29 @@ async def test_stage_of_nothing_part_way_through_leaves_what_it_was_doing(hass: 
         await set_state(hass, dryer["progress_percentage"], str(45 + told))
         assert calls[-1].data["message"] == "drying"
         told = len(calls)
+
+
+@pytest.mark.parametrize(
+    ("options", "title", "message"),
+    [
+        ({"live_detail": "program_status", "live_title": "name"}, "Samsung Dryer", "23 · drying"),
+        # the status alone, with the program in the title, there being no timer to take the message's place
+        ({"live_detail": "status"}, "Samsung Dryer · 23", "drying"),
+        ({"live_detail": "program"}, "Samsung Dryer", "23"),
+    ],
+)
+async def test_status_and_program_shown_in_place_of_the_time_left(
+    hass: HomeAssistant, options: dict[str, str], title: str, message: str
+) -> None:
+    """The stage of any appliance is its status, shown alone, or with its program, in place of the time left"""
+    dryer = localthings_dryer(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(dryer["machine_state"], "idle")
+    hass.states.async_set(dryer["dryer_cycle_table_03"], "23")
+    hass.states.async_set(dryer["finish_time"], "2026-10-06T21:44:16+00:00")
+    await setup_appliance(hass, dryer["device_id"], **options)
+
+    await set_state(hass, dryer["machine_state"], "active")
+    await set_state(hass, dryer["progress"], "drying")
+    assert (calls[-1].data["title"], calls[-1].data["message"]) == (title, message)
+    assert "when" not in calls[-1].data["extra_data"]

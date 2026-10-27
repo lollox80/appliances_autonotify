@@ -73,9 +73,8 @@ from .const import (
     LENGTH_PLACEHOLDER,
     LIVE_COUNT_PERCENT,
     LIVE_COUNTS,
-    LIVE_DETAIL_TIME,
+    LIVE_DEFAULTS,
     LIVE_DETAILS,
-    LIVE_TITLE_NAME_PROGRAM,
     LIVE_TITLES,
     MAINTENANCE_ITEMS,
     NAME_PLACEHOLDER,
@@ -86,6 +85,9 @@ from .const import (
     TYPE_DISCOVERY,
     TYPE_POWER,
     TYPE_VACUUM,
+    VACUUM_LIVE_DEFAULTS,
+    VACUUM_LIVE_DETAILS,
+    VACUUM_SETTLE,
     WEIGHT_PLACEHOLDER,
 )
 from .dashboards import dashboards
@@ -105,8 +107,7 @@ DEFAULT_CHOICES: dict[str, bool | str] = {
     CONF_NOTIFY_START: False,
     CONF_NOTIFY_END: True,
     CONF_NOTIFY_PROGRESS: False,
-    CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM,
-    CONF_LIVE_DETAIL: LIVE_DETAIL_TIME,
+    **LIVE_DEFAULTS,
     CONF_LIVE_COUNT: LIVE_COUNT_PERCENT,
     CONF_NOTIFY_PROBLEM: True,
     CONF_SNAPSHOT: True,
@@ -148,6 +149,9 @@ async def settings_schema(
     layers: bool = False,
     filament: bool = False,
     bed: bool = False,
+    settle: bool = False,
+    live: bool = True,
+    vacuum: bool = False,
 ) -> vol.Schema:
     """The settings of an appliance, with maintenance for one with something to maintain, and the cycles between each
     of the items for its type, as `maintenance` has them"""
@@ -174,15 +178,16 @@ async def settings_schema(
                     options=list(LIVE_COUNTS), mode=SelectSelectorMode.DROPDOWN, translation_key=CONF_LIVE_COUNT
                 )
             )
-        if supernotify_available(hass):
-            # only a Live Activity has a title that changes as the cycle goes on, and a timer
-            for key, options, default in (
-                (CONF_LIVE_TITLE, LIVE_TITLES, LIVE_TITLE_NAME_PROGRAM),
-                (CONF_LIVE_DETAIL, LIVE_DETAILS, LIVE_DETAIL_TIME),
-            ):
-                fields[vol.Required(key, default=default)] = SelectSelector(
-                    SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
-                )
+    if live and supernotify_available(hass):
+        # only a Live Activity has a title that changes as the cycle goes on, and a timer, which a vacuum hasn't
+        defaults = VACUUM_LIVE_DEFAULTS if vacuum else LIVE_DEFAULTS
+        for key, options in (
+            (CONF_LIVE_TITLE, LIVE_TITLES),
+            (CONF_LIVE_DETAIL, VACUUM_LIVE_DETAILS if vacuum else LIVE_DETAILS),
+        ):
+            fields[vol.Required(key, default=defaults[key])] = SelectSelector(
+                SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
+            )
     notify: dict[vol.Marker, Any] = {}
     end: dict[vol.Marker, Any] = {
         vol.Optional(CONF_END_TITLE): TextSelector(),
@@ -222,6 +227,11 @@ async def settings_schema(
         )
     else:
         notify[vol.Optional(CONF_TARGETS)] = EntitySelector(EntitySelectorConfig(domain="notify", multiple=True))
+    if settle:
+        # a robot vacuum's wait on its dock before its cleaning is over, where its own progress doesn't say
+        end[vol.Required(CONF_GRACE_PERIOD, default=VACUUM_SETTLE)] = NumberSelector(
+            NumberSelectorConfig(min=1, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.SECONDS)
+        )
     sections: dict[str, dict[vol.Marker, Any]] = {
         SECTION_START: {
             vol.Optional(CONF_START_TITLE): TextSelector(),
@@ -430,6 +440,8 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         name = self._name()
+        kind = self.config_entry.data.get(CONF_TYPE)
+        vacuum = kind == TYPE_VACUUM
         # as they'll be sent, so there's the real text to edit rather than a template or an empty box
         defaults = {key: text.replace(NAME_PLACEHOLDER, name) for key, text in DEFAULT_TEXTS.items()}
         if user_input is not None:
@@ -439,7 +451,12 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 defaults
                 | DEFAULT_CHOICES
                 | usual
-                | {CONF_NOTIFY_PHASE: self._phase_default(), CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS}
+                | (VACUUM_LIVE_DEFAULTS if vacuum else {})
+                | {
+                    CONF_NOTIFY_PHASE: self._phase_default(),
+                    CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS,
+                    CONF_GRACE_PERIOD: VACUUM_SETTLE,
+                }
             )
             # maintenance left off is only turned down once it had been on, so it's still offered to anyone who
             # hasn't been asked
@@ -467,10 +484,11 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             return self.async_create_entry(data=settings)
         # what this appliance has to offer, as found when it was last set up
         watcher = getattr(self.config_entry, "runtime_data", None)
-        # a power monitored appliance has no progress to report, nor has a robot vacuum
+        # a power monitored appliance has no progress to report, nor program for a Live Activity, and a robot vacuum's
+        # progress, where it has one, is only for the bar
         schema = await settings_schema(
             self.hass,
-            progress=self.config_entry.data.get(CONF_TYPE) not in (TYPE_POWER, TYPE_VACUUM),
+            progress=kind not in (TYPE_POWER, TYPE_VACUUM),
             phase=self._phase_default(),
             maintenance=self._maintenance(),
             problem=getattr(watcher, "has_problem", False),
@@ -478,6 +496,9 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             layers=getattr(watcher, "has_layers", False),
             filament=getattr(watcher, "has_filament", False),
             bed=getattr(watcher, "has_bed", False),
+            settle=vacuum,
+            live=kind != TYPE_POWER,
+            vacuum=vacuum,
         )
         self._shown = field_names(schema)
         shown = dict(self.config_entry.options)

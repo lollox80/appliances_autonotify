@@ -79,7 +79,7 @@
                     "dashboard": "Aperta quando si tocca una notifica o la Live Activity. Lascia vuoto per aprire l'app dove si trovava. Impostata su una dashboard con il nome dell'elettrodomestico o del suo tipo, ad esempio \"Lavastoviglie\" o \"Lavatrice\", se ce n'era una quando l'elettrodomestico è stato aggiunto.",
                     "notify_progress": "Invia una notifica ogni 10% del ciclo. Se disattivato, l'avanzamento compare solo nella barra della Live Activity, aggiornata senza suono.",
                     "live_title": "Il titolo della Live Activity. Il programma accanto al nome è utile quando il tempo residuo prende il posto del messaggio, come nella schermata di blocco dell'iPhone. Scegli solo il nome se i nomi dei programmi sono troppo lunghi, o se l'elettrodomestico usa sempre lo stesso programma.",
-                    "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure il programma al suo posto. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio.",
+                    "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure al suo posto il programma, lo stato, cioè cosa sta facendo nel ciclo, come l'asciugatura o un robot aspirapolvere che si riposiziona, o entrambi. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio, e per un robot aspirapolvere è la modalità di pulizia. Ciò che l'elettrodomestico non indica viene omesso.",
                     "maintenance": "Conta i cicli, e quanta vita resta alle parti di cui l'apparecchio la riporta, e mette ciò che va fatto nella lista Manutenzione elettrodomestici, con una notifica quando scade. Se è spento viene proposto una volta sulla notifica di fine.",
                     "notify_problem": "Invia una notifica quando un guasto ferma l'elettrodomestico, dicendo qual è: in pausa a metà, in attesa che qualcuno intervenga, oppure fermo del tutto. Una pausa fatta a mano non è un guasto.",
                     "snapshot": "Invia una foto dalla telecamera dell'elettrodomestico con la fine e con un guasto.",
@@ -103,13 +103,15 @@
                             "reminder": "Promemoria",
                             "reminder_repeats": "Ripetizioni del promemoria",
                             "filament_price": "Prezzo del filamento",
-                            "cooled_temperature": "Pronta da staccare sotto"
+                            "cooled_temperature": "Pronta da staccare sotto",
+                            "grace_period": "Attesa alla base"
                         },
                         "data_description": {
                             "reminder": "Minuti dopo i quali la fine viene inviata di nuovo, finché non si preme Finito sulla notifica. 0 per nessun promemoria. Ricordamelo dopo, sulla notifica, attende questo tempo o 30 minuti.",
                             "reminder_repeats": "Quante volte la fine viene inviata di nuovo",
                             "filament_price": "Il prezzo di un chilo di filamento. Per una stampante, {filament_placeholders} nel messaggio di fine diventano il filamento usato dalla stampa, in grammi e metri, e quanto è costato a questo prezzo.",
-                            "cooled_temperature": "Finita una stampa, una notifica ai telefoni quando il piatto è sceso sotto questa temperatura, così la stampa si stacca facilmente. 0 per nessuna."
+                            "cooled_temperature": "Finita una stampa, una notifica ai telefoni quando il piatto è sceso sotto questa temperatura, così la stampa si stacca facilmente. 0 per nessuna.",
+                            "grace_period": "Secondi per cui un robot aspirapolvere deve restare alla base, di ritorno dalla pulizia, prima che la pulizia sia finita, nel caso riparta. Aumentalo per uno che torna a metà per lavare il mop o svuotare il contenitore. Se l'aspirapolvere indica il proprio avanzamento, o se sta pulendo, come fa Roborock, si segue quello, qualunque sia questo valore."
                         }
                     },
                     "notify": {
@@ -189,7 +191,9 @@
         "live_detail": {
             "options": {
                 "time_remaining": "Tempo residuo",
-                "program": "Programma"
+                "program": "Programma",
+                "status": "Stato",
+                "program_status": "Programma e stato"
             }
         },
         "live_count": {

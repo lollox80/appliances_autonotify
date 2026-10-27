@@ -32,7 +32,8 @@ or [LocalThings](https://github.com/mbillow/localthings), in English only. Any o
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rhizomatics&repository=appliance_autonotify&category=integration)
 
-1. Use the button above, or in HACS add `https://github.com/rhizomatics/appliance_autonotify` as a custom repository of type *Integration*, then install *Appliance Auto Notify* and restart Home Assistant
+1. Use the button above, or in HACS search for *Appliance Auto Notify* and restart Home Assistant 
+   - Appliance Auto Notify is in the default HACS catalogue, so no need to add any custom repository
 2. In *Settings*, *Devices & services*, choose *Add integration* and pick *Appliance Auto Notify*
 3. Leave *Set up appliances automatically* on, and submit
 
@@ -58,8 +59,16 @@ heard from, though an end it told meanwhile still counts once the first goes qui
 
 A robot vacuum of any make, through whichever integration Home Assistant has for it, is found and set up like the other appliances.
 
-Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its dock, or stopped by itself, for 10 minutes after saying it was on its way back. A vacuum that goes straight to its dock from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
+Cleaning is the cycle: it starts as the vacuum sets off, and ends once it has been back on its dock, or stopped by itself, for 10 minutes after saying it was on its way back. That wait is *Wait on the dock* in the *End message* settings of the vacuum, to raise for one that goes back part way through
+to wash its mop or empty its bin, or lower for one that never does. A vacuum that goes straight to its dock from cleaning, as one does part way through to wash its mop or fill its tank, is given 30 minutes to set off again
 before its cleaning is taken to be over.
+
+Where the vacuum reports its own progress, as Roborock does, its cleaning is over 30 seconds after it's back on its dock with its progress at 100%, rather than waiting. Any percentage of the vacuum's
+other than its battery that climbs to 100 during a cleaning is taken for its progress, so one that doesn't reach 100, such as a brush's life left, makes no difference.
+
+Where the vacuum has a sensor of its own for whether it's cleaning, as Roborock's *Cleaning* is, that is followed instead: back on its dock with it still on is the same cleaning, for as long as 6 hours, as when it
+recharges part way through to carry on, and once it goes off the cleaning is over 30 seconds after it's back. Any *running* sensor of the vacuum's that comes on within a minute of it setting off is taken for this, so
+one that only comes on once it's back, such as its mop drying, makes no difference.
 
 Paused, or on its way back, it's still the same cleaning too, and paused once
 back on its dock is still the end. A cleaning under way when Home Assistant restarts still has its end told. One that stays in error for 10 minutes while out is told of with a notification of its own, *Bruno needs help*, rather than the end, since some integrations
@@ -67,6 +76,9 @@ report a past error again for a while as they reconnect, with the vacuum carryin
 
 While it cleans, the Live Activity says what it's doing, cleaning, paused or on its way back, with buttons to match
 where the vacuum has them: *Pause* and *Return to Dock* while it cleans, *Resume* and *Return to Dock* while paused.
+
+Where the vacuum's integration reports them, as Roborock's does, its *Cleaning mode* is its program, its *Status*, such as sweeping or relocating, is its status, and its *Cleaning progress* fills the bar of the Live Activity,
+once it has dropped from the 100% left by the cleaning before. A vacuum has no time left to show, so its *Live Activity shows* is the *Program and status* by default, such as "Vac and mop · Sweeping", and its *Live Activity title* the *Appliance name only*.
 
 ### 3D Printers
 
@@ -129,7 +141,7 @@ Nothing needs changing for notifications to work. Each appliance on the integrat
   - off by default, switch on to get the percentage or ETA regularly notified
 - a choice of *Live Activity title* and of what the *Live Activity shows*
   - Choose to have the main title be the appliance name and the programme name ("Dishwashed Intensive 70C"), or only the appliance name or programme
-  - Choose to have the 2nd line of live activity be the countdown clock or programme name
+  - Choose to have the 2nd line of live activity be the countdown clock, the programme name, the status, such as "Drying" or "Relocating", or the programme and status together
   - Supernotify required for these options
 - *Dashboard to open*
   - when a notification or the Live Activity is tapped.
@@ -144,7 +156,9 @@ With *Notify start* or *Notify end* off, that notification isn't sent, but the L
 | End message          | The same for when it finishes, such as "Dishwasher is finished". `{duration}` is replaced by how long it ran, such as "1h 40min", `{energy}` by the energy it used, such as "0.74 kWh", where the appliance or its smart plug has an energy meter, and `{cost}` by what that cost, where a price is set for the grid on the Energy dashboard, each by nothing where it isn't known. Numbers are written as in Home Assistant's language, such as "0,74 kWh" in Italian. With Supernotify, Alexa and other voice deliveries are given the title and message as they're to be said, with no emoji, and the duration and cost in words, such as "Bucato pronto. 50 minuti, 19 centesimi", in Italian or English. With Supernotify, also a *Reminder*, see below, sent to phones only rather than said aloud again |
 | Notification targets | With Supernotify, *Targets* is the same choice of entities, devices, areas, floors and labels as any Supernotify notification, *Custom targets* is for those outside Home Assistant, such as e-mail addresses or phone numbers, and *Deliveries* limits notifications to those chosen. Leave them empty for Supernotify to choose. Without Supernotify, *Targets* is a choice of notify entities, and left empty means every phone with the Home Assistant app |
 
-*Live Activity shows* is the *Time remaining* by default, where the appliance reports when it will finish, or the *Program* in its place. The program can be the whole cycle, or a phase of it, such as a pre-heat or a pre-rinse, so for some appliances it says more than the time left.
+*Live Activity shows* is the *Time remaining* by default, where the appliance reports when it will finish, or in its place the *Program*, the *Status*, or the *Program and status*, such as "Vac and mop · Sweeping". The program can be the whole cycle, or a phase of it, such as a pre-heat or a pre-rinse, so for some appliances it says more than the time left. The status is what the appliance is doing within its cycle, such as a dryer drying then cooling. Where the appliance reports only one of them, that one is shown.
+
+With no timer, the message is seen, so *Appliance name and program* puts the program in the title only where the message doesn't already say it, such as "Jill · Vac and mop" over "Sweeping" with *Status* chosen.
 
 On the Lock Screen of an iPhone the timer takes the place of the message, which is where the program otherwise goes,
 so while there's a time left to show, *Live Activity title* is *Appliance name and program* by default, such as
@@ -254,15 +268,15 @@ used instead, as in "Washer" or "Kettle".
 - An appliance with a stage but no progress, such as a Samsung one through SmartThings, has its Live Activity brought up to date only as its stage changes, so its time remaining may lag a change of its finish time until then
 
 - If the appliance never reports the end of its cycle, the Live Activity stays on the phone until dismissed
-- If Home Assistant restarts mid-cycle, the end is still notified and the Live Activity closed
+- A cycle under way survives a Home Assistant restart: it isn't told of as started again, and the wait to see that it's over, or for a reminder, carries on from where it was, unless Home Assistant has been off for more than a day
 - An appliance that stops without saying it has finished or been switched off is taken to be finished 10 seconds later, in case it carries on, as an oven does when its settings are changed
 - An oven has no pre-heating bar until Home Connect first reports its temperature, which isn't known after a restart of Home Assistant until the oven is next heating
 - An oven started from its own controls often has no pre-heating bar or pre-heated notification at all, since Home Connect may then never give Home Assistant the temperature it's set to, see [Oven Pre-heating](#oven-pre-heating)
 - Progress, time remaining and the program are only shown where the appliance reports them, so never for a power monitored appliance
-- A robot vacuum that goes back to its dock to recharge part way through, saying it's on its way back as it does at the end, has two cleanings told if it charges for longer than 10 minutes, since Home Assistant has no way to tell that dock from the last
+- A robot vacuum that goes back to its dock to recharge part way through, saying it's on its way back as it does at the end, has two cleanings told if it charges for longer than its *Wait on the dock*, unless it has a sensor for whether it's cleaning, since otherwise there's no telling that dock from the last
 - A robot vacuum whose integration never says it's on its way back is told to be finished 30 minutes after it's back on its dock
 - Some integrations, such as Ecovacs, report a robot vacuum docked within a second of setting off and keep to that while it cleans, so being docked that soon is only believed after 3 hours with nothing else heard, which is when one stopped just as it set off is told to be finished
-- If Home Assistant restarts while an oven is on, it isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature
+- An oven still warming up when Home Assistant restarts is still shown as pre-heating, and told of once up to heat, unless it got there while Home Assistant was off. One switched on while Home Assistant was off isn't shown as pre-heating, since there's no knowing whether it has been up to heat, only with its program and temperature
 - An oven with no timer set reports its progress as 100%, so that is what the bar shows once it's up to heat
 
 ## Known Issues
@@ -300,6 +314,8 @@ uv run mypy custom_components/appliance_autonotify
 ```
 
 This component is an implementation of [RFC-0004](https://supernotify.rhizomatics.org.uk/latest/developer/rfcs/0004-household_appliances_auto_notifier/) from [Supernotify](https://supernotify.rhizomatics.org.uk)
+
+If you liked this, try [Camera AutoNotify](https://camera-autonotify.rhizomatics.org.uk) - Instant notifications for Frigate (and other camera systems coming) with no config, no blueprints, no YAML, no automations.
 
 [hacs]: https://hacs.xyz
 [hacsbadge]: https://img.shields.io/badge/HACS-Default-blue.svg

@@ -1,12 +1,34 @@
 ---
 title: What's New
 ---
+
+# 0.13.0
+## ✨ Enhancements
+- A cycle under way survives a Home Assistant restart
+  -  Carries on from where it was, unless Home Assistant has been off for more than a day
+- Live Activity can now also be appliance status where provided, or combined status/programme, e.g. "Vac and Mop · Repositioning"
+- Robot Vacuums
+  - Use progress percentage where available to show live progress
+  - Use the `cleaning_mode` where available as the program
+  - Use the `status` where available as the status, such as *Sweeping* or *Relocating*
+  - *Live Activity title* and *Live Activity shows* offered for vacuums, *Appliance name only* and *Program and status* by default
+- *Live Activity shows* as *Program* now shows the program even where the appliance also reports a status
+- With no timer, *Appliance name and program* puts the program in the title where the message doesn't already say it
+
+# 0.12.0
+## ✨ Enhancements
+- Robot Vacuums
+ - Finished 30 seconds after docking, rather than 10 minutes, where the vacuum reports its own progress reaching 100%, as Roborock does
+ - Kept as one cleaning through a recharge part way through, and finished 30 seconds after docking, where the vacuum has a sensor for whether it's cleaning, as Roborock's *Cleaning* is
+ - *Wait on the dock* setting, under *End message*, for how long a vacuum must stay docked before its cleaning is over otherwise, 10 minutes by default
+
 # 0.11.0
 ## ✨ Enhancements
 - Device Usage
  - Each appliance has a device of its own, listed under it on the integration's page with its model and area
  - Shown as a **Linked device** of the appliance's device from Home Connect, SmartThings, LocalThings or the vacuum's integration, each with that integration's icon, as the same hardware is between integrations such as UniFi and ONVIF.
  - A power monitored appliance's device is instead *connected via* the smart plug, which is other hardware
+
 
 # 0.10.0
 ## ✨ Enhancements
