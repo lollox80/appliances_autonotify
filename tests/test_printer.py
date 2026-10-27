@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
@@ -11,7 +13,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.appliance_autonotify.const import CYCLE_SETTLE, DOMAIN
 
 from .conftest import mock_supernotify
+from .test_restart import restart
 from .test_watcher import ANDROID, ended, pass_time, set_state
+
+if TYPE_CHECKING:
+    from freezegun.api import FrozenDateTimeFactory
 
 ICON = "mdi:printer-3d"
 # as ha-bambulab names them, by translation key
@@ -912,3 +918,41 @@ async def test_filament_settings_kept_when_saved_while_it_isnt_running(hass: Hom
     result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.config_entries.options.async_configure(result["flow_id"], {"start": {}, "end": {}, "notify": {}})
     assert entry.options == {"filament_price": 24.99, "cooled_temperature": 35}
+
+
+async def test_filament_in_reminders_after_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    hass.config.language = "it"
+    hass.config.currency = "EUR"
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    entry = await setup_printer(
+        hass, printer, end_message="🧵 {weight} · {length}\n💰 {filament_cost}", filament_price=24.99, reminder=10
+    )
+    hass.states.async_set(printer["print_weight"], "12.44", {"unit_of_measurement": "g"})
+    hass.states.async_set(printer["print_length"], "4.051", {"unit_of_measurement": "m"})
+    await set_state(hass, printer["print_status"], "finish")
+    hass.states.async_set(printer["print_weight"], "0")
+    hass.states.async_set(printer["print_length"], "0")
+    await restart(hass, entry, freezer, off_for=60)
+    freezer.tick(10 * 60)
+    await pass_time(hass, 0)
+    assert calls[-1].data["message"] == "🧵 12 g · 4,05 m\n💰 0,31 €"
+
+
+async def test_fault_not_told_again_after_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    hass.states.async_set(printer["stage"], "printing")
+    entry = await setup_printer(hass, printer)
+    await set_state(hass, printer["print_status"], "prepare")
+    await set_state(hass, printer["print_status"], "running")
+    fault_on(hass, printer)
+    await set_state(hass, printer["print_status"], "pause")
+    asked = [call for call in calls if "_problem" in call.data["extra_data"].get("mobile_push_notification_tag", "")]
+    assert len(asked) == 1
+
+    await restart(hass, entry, freezer, off_for=60)
+    asked = [call for call in calls if "_problem" in call.data["extra_data"].get("mobile_push_notification_tag", "")]
+    assert len(asked) == 1

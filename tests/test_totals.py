@@ -335,3 +335,39 @@ async def test_vacuum_timed_till_back_before_a_restart(hass: HomeAssistant, free
     await restart(hass, entry, freezer, off_for=60)
     await advance(hass, freezer, VACUUM_SETTLE)
     assert calls[-1].data["message"] == "Bruno: 30 min"
+
+
+async def test_reminder_after_a_restart_tells_what_the_cycle_came_to(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, grace_period=120, reminder=30, end_message="{energy} in {duration}")
+    await wash(hass, freezer, 0.5)
+    assert calls[-1].data["message"] == "0.50 kWh in 50 min"
+    told = len(calls)
+    await restart(hass, entry, freezer, off_for=60)
+    await tick(hass, freezer, 30 * 60)
+    assert len(calls) == told + 1
+    assert calls[-1].data["message"] == "0.50 kWh in 50 min"
+
+
+async def test_stopped_while_off_has_no_duration(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    entry = await setup_power_watcher(hass, grace_period=120, end_message="Washed\n⏱ {duration}\n⚡ {energy}")
+    await set_state(hass, POWER, "1800")
+    await tick(hass, freezer, 50 * 60)
+    hass.states.async_set(ENERGY, "100.5", hass.states.get(ENERGY).attributes)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    # at rest by the time Home Assistant is back an hour later
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    freezer.tick(3600)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await tick(hass, freezer, 120)
+    # how long it ran isn't known, with no telling when it stopped, but what it used is
+    assert calls[-1].data["message"] == "Washed\n⚡ 0.50 kWh"
