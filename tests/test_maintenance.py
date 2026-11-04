@@ -18,6 +18,7 @@ from custom_components.appliance_autonotify.const import DOMAIN, VACUUM_SETTLE
 from custom_components.appliance_autonotify.maintenance import DATA_MAINTENANCE, STORAGE_KEY
 
 from .conftest import FakeAppliance, add_appliance, mock_supernotify, setup_watcher
+from .test_restart import restart
 from .test_vacuum import add_vacuum, advance, setup_vacuum
 from .test_watcher import set_state
 
@@ -423,6 +424,21 @@ async def test_track_keeps_the_reminders(hass: HomeAssistant, freezer: FrozenDat
     await press(hass, f"APPLIANCE_TRACK_MAINTENANCE_{entry.entry_id}")
     assert entry.options == {"reminder": 10, "maintenance": False}
     assert not hass.data[DATA_MAINTENANCE].tracked(entry.entry_id)
+
+
+async def test_track_pressed_not_offered_again_after_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    entry = await setup_watcher(hass, appliance, {"reminder": 10})
+    await cycle(hass, appliance)
+    told = len(calls)
+    await press(hass, f"APPLIANCE_TRACK_MAINTENANCE_{entry.entry_id}")
+
+    await restart(hass, entry, freezer, off_for=60)
+    await advance(hass, freezer, 540)
+    # the reminder kept through the restart, with tracking already turned on
+    assert len(calls) == told + 1
+    assert all("TRACK" not in a["action"] for a in calls[-1].data["actions"])
 
 
 async def test_without_supernotify(hass: HomeAssistant) -> None:
