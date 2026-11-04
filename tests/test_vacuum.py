@@ -809,6 +809,22 @@ async def test_vacuum_status_is_said_as_it_goes(hass: HomeAssistant) -> None:
     assert len(calls) == count
 
 
+async def test_vacuum_status_saying_nothing_falls_back_to_what_it_is_doing(hass: HomeAssistant) -> None:
+    """A Status that says nothing in particular, as idle, leaves its Live Activity to say what the vacuum is doing"""
+    device_id, vacuum = add_vacuum(hass)
+    status = add_sensor(hass, device_id, "sensor", "status", "enum", translation_key="status")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    hass.states.async_set(status, "idle")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, vacuum, "paused")
+    assert calls[-1].data["message"] == "paused"
+    await set_state(hass, vacuum, "returning")
+    assert calls[-1].data["message"] == "returning"
+
+
 def add_roborock(hass: HomeAssistant) -> tuple[str, str, str, str, str]:
     """A vacuum with Roborock's Status, Cleaning mode and Cleaning progress, returning its device and those entities"""
     device_id, vacuum = add_vacuum(hass)
