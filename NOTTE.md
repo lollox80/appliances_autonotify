@@ -15,7 +15,19 @@ Giro 2:
 - Solo questo resoconto. Controllo a occhio di `b550608`: il nuovo assegnamento è coerente col tipo
   dichiarato di `_filament` (`tuple[float | None, float | None]`).
 
+Giro 2 (ripresa):
+- Solo questo aggiornamento del resoconto. L'ambiente risultava pronto, ma il controllo dice il contrario (vedi sotto).
+
 ## Non fatto e perché
+
+- **Giro 2 (ripresa): ambiente ancora non pronto, nessuna modifica di codice.** Il `.venv` è invariato:
+  - `pyvenv.cfg` punta a `cpython-3.13`;
+  - `python -m pytest` dà `No module named pytest`;
+  - `uv --version` chiede un'approvazione.
+
+  Installare con `uv pip install` non era quindi possibile. Non sarebbe stato comunque "un pacchetto solo per i test":
+  mancano Home Assistant, pytest, ruff e mypy, e serve Python ≥ 3.14.2.
+  Per la stessa ragione la serie del giro 1 resta non verificata.
 
 - **Suite di test, lint, typecheck non eseguiti.** Il `.venv` del worktree NON è pronto:
   - contiene solo `python.exe` (niente pytest, Home Assistant, ruff, mypy);
