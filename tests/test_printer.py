@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -13,7 +13,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.appliance_autonotify.const import CYCLE_SETTLE, DOMAIN
 
 from .conftest import mock_supernotify
-from .test_restart import restart
+from .test_restart import restart, store_key
 from .test_watcher import ANDROID, ended, pass_time, set_state
 
 if TYPE_CHECKING:
@@ -938,6 +938,27 @@ async def test_filament_in_reminders_after_a_restart(hass: HomeAssistant, freeze
     freezer.tick(10 * 60)
     await pass_time(hass, 0)
     assert calls[-1].data["message"] == "🧵 12 g · 4,05 m\n💰 0,31 €"
+
+
+async def test_filament_kept_as_other_than_numbers_left_out(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    printer = add_printer(hass, extras=True)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(printer["print_status"], "running")
+    entry = await setup_printer(hass, printer, end_message="Took {weight} {length}", reminder=10)
+    hass.states.async_set(printer["print_weight"], "12.44", {"unit_of_measurement": "g"})
+    hass.states.async_set(printer["print_length"], "4.051", {"unit_of_measurement": "m"})
+    await set_state(hass, printer["print_status"], "finish")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    # written by hand, or by a version that kept something else there
+    hass_storage[store_key(entry)]["data"]["phase"]["filament"] = ["12 g", 4.051]
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    freezer.tick(10 * 60)
+    await pass_time(hass, 0)
+    assert calls[-1].data["message"] == "Took 4.05 m"
 
 
 async def test_fault_not_told_again_after_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:

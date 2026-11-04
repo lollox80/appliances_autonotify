@@ -1278,7 +1278,8 @@ class HomeConnectWatcher(ApplianceWatcher):
         filament = phase.get("filament")
         if isinstance(filament, list) and len(filament) == 2:
             # what the print just over took, for its reminders
-            self._filament = (filament[0], filament[1])
+            weight, length = (float(v) if isinstance(v, (int, float)) else None for v in filament)
+            self._filament = (weight, length)
 
         cycle_entity_ids = [e for e in (self.cycle_entity_id, self.fallback_cycle_entity_id) if e]
         self.entry.async_on_unload(async_track_state_change_event(self.hass, cycle_entity_ids, self._cycle_changed))
