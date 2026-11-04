@@ -29,7 +29,20 @@ Giro 3 (revisione):
     perché il promemoria porta sempre le azioni di tocco.
   - `6de82d3`, `1a8940f`: coerenti con il codice e con il comportamento descritto in `2600261`.
 
+Giro 4 (test mancanti):
+- Solo questo resoconto. Nessun test aggiunto, perché l'ambiente non è ancora pronto (vedi sotto).
+  Ho però individuato a lettura i buchi di copertura, da riempire appena i test girano (vedi "Da decidere").
+
 ## Non fatto e perché
+
+- **Giro 4: test nuovi non scritti, ambiente ancora non pronto.** Il prompt dava di nuovo il `.venv` per pronto
+  (Python 3.14 con pytest, ruff, mypy, Home Assistant). All'inizio del giro però:
+  - `.venv/pyvenv.cfg` punta ancora a `cpython-3.13`;
+  - in `site-packages` c'è solo `_virtualenv`;
+  - `python -m pytest` dà `No module named pytest`;
+  - `uv --version` chiede un'approvazione.
+
+  Un test che non si può eseguire è codice non verificato, quindi niente commit di test.
 
 - **Giro 3: ambiente ancora non pronto.** All'inizio del giro `.venv/pyvenv.cfg` punta ancora a `cpython-3.13` e
   `python -m pytest` dà `No module named pytest`. Il prompt lo dava per pronto (Python 3.14 con pytest, ruff, mypy,
@@ -57,6 +70,17 @@ Giro 3 (revisione):
   richiedono la HA reale, review su GitHub o decisioni di Lollo.
 
 ## Da decidere
+
+- Test candidati (giro 4), trovati a lettura, da scrivere quando l'ambiente c'è. La copertura generale è buona:
+  `test_config_flow.py` e `test_samsung.py` coprono già discovery, companion e preferenza locale/cloud.
+  - `discovery.is_power_sensor`: l'esclusione dei sensori di potenza di `DERIVED_POWER_PLATFORMS` (stimati o
+    calcolati da altri) non ha test. Esempio: una presa "Lavatrice" su piattaforma `template` non va offerta.
+  - `discovery.is_power_sensor`: manca anche il caso di unità diversa da W (es. kW), oggi scartato senza test.
+  - `discovery.role_key`: il ramo con `ROLE_KEY_PREFIXES` (chiave di traduzione che inizia con un prefisso noto)
+    è coperto solo di passaggio dai fixture Samsung; un test diretto e piccolo lo fisserebbe.
+  - `discovery.async_start_discovery`: non c'è un test che il rinomina di un dispositivo (`name_by_user`) faccia
+    offrire la presa. Lo coprono in parte `test_power_monitor_offered_once_named_for_an_appliance`; da verificare
+    se passa davvero per `device_registry_updated`.
 
 - Sistemare la preparazione del worktree notturno. Lo script dovrebbe creare il `.venv` con Python ≥ 3.14.2 e le dipendenze
   di sviluppo, più gli stub Windows. In alternativa si può autorizzare l'uso di `C:/Users/User/venvs/aa-ha2026.10`
