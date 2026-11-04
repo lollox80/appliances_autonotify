@@ -47,7 +47,8 @@ Giro 5 (decisioni preparate):
   `__init__.py`, senza `helpers` e senza dist-info: la preparazione si è interrotta durante la copia.
   - Ho rilanciato `uv pip install --python .venv homeassistant==2026.10.4`, la versione di `uv.lock`, senza cambiare
     le dipendenze dichiarate.
-  - Il primo tentativo è stato fermato dopo 20 minuti. Il secondo resta in corso, con un limite di 60 minuti.
+  - Il primo tentativo è stato fermato dopo 20 minuti. Anche il secondo si è interrotto, con codice di uscita 127
+    e nessun errore nel log oltre all'avviso sugli hardlink: `homeassistant.helpers` manca ancora.
   - La causa è nel log di uv: `Failed to hardlink files; falling back to full copy`. La cache di uv è su C: e il
     worktree su F:, quindi ogni file viene copiato.
   - Ritmo misurato: circa 5 cartelle di `components` al minuto (da 446 a 456 in 2 minuti), su circa 1450.
