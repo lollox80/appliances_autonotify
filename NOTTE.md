@@ -18,7 +18,23 @@ Giro 2:
 Giro 2 (ripresa):
 - Solo questo aggiornamento del resoconto. L'ambiente risultava pronto, ma il controllo dice il contrario (vedi sotto).
 
+Giro 3 (revisione):
+- Solo revisione a lettura dei 7 commit degli ultimi 7 giorni (tutti di stanotte), più questo resoconto.
+  Nessun bug trovato che giustifichi una correzione; nessuna modifica di codice (ambiente ancora non pronto, vedi sotto).
+  - `b550608`: l'assegnamento rispetta il tipo di `_filament`. Il messaggio atteso del test (`"Took 4.05 m"`, con
+    `{weight}` vuoto) torna, perché `watcher.py:949` riduce gli spazi doppi.
+  - `06b98aa`: i conti tornano: 40 min prima dell'avvio + 10 min = `50 min`. `{energy}` resta vuoto perché senza
+    `totals` non c'è energia di partenza, e lo spazio finale viene tolto allo stesso modo.
+  - `0c69b3b`: ricalca `test_track_keeps_the_reminders` passando per `restart`. `calls[-1].data["actions"]` esiste
+    perché il promemoria porta sempre le azioni di tocco.
+  - `6de82d3`, `1a8940f`: coerenti con il codice e con il comportamento descritto in `2600261`.
+
 ## Non fatto e perché
+
+- **Giro 3: ambiente ancora non pronto.** All'inizio del giro `.venv/pyvenv.cfg` punta ancora a `cpython-3.13` e
+  `python -m pytest` dà `No module named pytest`. Il prompt lo dava per pronto (Python 3.14 con pytest, ruff, mypy,
+  Home Assistant), ma non lo è. Per questo nessun test nuovo e nessuna correzione: la revisione è solo a lettura,
+  e la serie del giro 1 resta non verificata.
 
 - **Giro 2 (ripresa): ambiente ancora non pronto, nessuna modifica di codice.** Il `.venv` è invariato:
   - `pyvenv.cfg` punta a `cpython-3.13`;
@@ -51,3 +67,7 @@ Giro 2 (ripresa):
   (diario 22/10). Prima di pubblicarli: riscrivere i messaggi o lasciarli?
 - Nota minore su `b550608`: `isinstance(v, (int, float))` accetta anche `bool` (`True` → `1.0`). È innocuo con store
   scritti dal componente; se lo si vuole più stretto, va escluso `bool`.
+  Sempre lì (giro 3), un'incoerenza dello stesso genere: `_filament_now` tratta `0` come non noto (`or None`), il
+  ripristino invece lo tiene come `0.0`. Da uno store scritto a mano, `[0, 4.05]` farebbe quindi dire `0 g`.
+  Anche `NaN`/`inf` passerebbero. Con store scritti dal componente non succede, perché `0` vi arriva già come `None`.
+  Se si vuole allineare, basterebbe `float(v) or None` con un controllo `math.isfinite`, da fare con i test verdi.
