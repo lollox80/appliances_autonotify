@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.appliance_autonotify.const import VACUUM_SETTLE
@@ -20,7 +21,7 @@ from custom_components.appliance_autonotify.totals import (
 )
 
 from .conftest import mock_supernotify
-from .test_restart import restart
+from .test_restart import restart, setup_kept_power_watcher
 from .test_vacuum import add_vacuum, advance, setup_vacuum
 from .test_watcher import set_state, setup_power_watcher
 
@@ -371,3 +372,25 @@ async def test_stopped_while_off_has_no_duration(hass: HomeAssistant, freezer: F
     await tick(hass, freezer, 120)
     # how long it ran isn't known, with no telling when it stopped, but what it used is
     assert calls[-1].data["message"] == "Washed\n⚡ 0.50 kWh"
+
+
+async def test_kept_by_a_version_without_totals_timed_from_its_start(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: FrozenDateTimeFactory
+) -> None:
+    """Kept with when it started but nothing of its totals, so timed from then, with nothing metered"""
+    add_plug(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(POWER, "1800", {"unit_of_measurement": "W"})
+    started = dt_util.utcnow() - timedelta(minutes=40)
+    await setup_kept_power_watcher(
+        hass,
+        hass_storage,
+        timedelta(minutes=1),
+        options={"end_message": "{duration} {energy}"},
+        started_at=started.isoformat(),
+    )
+    await tick(hass, freezer, 10 * 60)
+    hass.states.async_set(ENERGY, "100.5", hass.states.get(ENERGY).attributes)
+    await set_state(hass, POWER, "0")
+    await tick(hass, freezer, 120)
+    assert calls[-1].data["message"] == "50 min"
