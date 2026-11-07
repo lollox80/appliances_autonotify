@@ -76,6 +76,8 @@ report a past error again for a while as they reconnect, with the vacuum carryin
 
 While it cleans, the Live Activity says what it's doing, cleaning, paused or on its way back, with buttons to match
 where the vacuum has them: *Pause* and *Return to Dock* while it cleans, *Resume* and *Return to Dock* while paused.
+Left paused away from its dock for half an hour, it's told of once, to the phones only, with the same buttons, and
+the notification goes once it carries on.
 
 Where the vacuum's integration reports them, as Roborock's does, its *Cleaning mode* is its program, its *Status*, such as sweeping or relocating, is its status, and its *Cleaning progress* fills the bar of the Live Activity,
 once it has dropped from the 100% left by the cleaning before. A vacuum has no time left to show, so its *Live Activity shows* is the *Program and status* by default, such as "Vac and mop · Sweeping", and its *Live Activity title* the *Appliance name only*.

@@ -226,6 +226,11 @@ PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
 # a robot vacuum that has stopped where it is, stuck or lifted, and won't go on by itself, by the language of Home
 # Assistant as for the buttons, English for any other
 STUCK_MESSAGES: Final[dict[str, str]] = {"en": "{name} needs help", "it": "{name} ha bisogno di aiuto"}
+# a robot vacuum left paused away from its dock, as by someone pausing it and forgetting, or by a button pressed in passing
+PAUSED_MESSAGES: Final[dict[str, str]] = {
+    "en": "{name} has been paused for {minutes} minutes, away from its dock",
+    "it": "{name} è in pausa da {minutes} minuti, fuori dalla base",
+}
 # a cycle stopped for good by a fault, by type of appliance, then for any other
 FAILED_MESSAGES: Final[dict[str, dict[str, str]]] = {
     "en": {"3d_printer": "Print failed", "": "Stopped by a fault"},
@@ -262,6 +267,8 @@ VACUUM_DONE: Final[tuple[str, ...]] = ("docked", "idle")
 VACUUM_ERROR: Final[str] = "error"
 # how long a robot vacuum stays on its dock, having said it was on its way back, before its cleaning is over
 VACUUM_SETTLE: Final[int] = 600
+# seconds a robot vacuum can stay paused away from its dock before it's told of, once
+VACUUM_PAUSE_REMIND: Final[int] = 30 * 60
 # how long one stays on its dock having gone straight there from cleaning, as one does part way through to wash its
 # mop or fill its tank, which can take over ten minutes, before its cleaning is over
 VACUUM_MIDWAY_SETTLE: Final[int] = 30 * 60

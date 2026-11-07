@@ -17,6 +17,7 @@ from custom_components.appliance_autonotify.const import (
     VACUUM_COMPLETE_SETTLE,
     VACUUM_HELD_SETTLE,
     VACUUM_MIDWAY_SETTLE,
+    VACUUM_PAUSE_REMIND,
     VACUUM_SETTLE,
 )
 
@@ -350,7 +351,84 @@ async def test_vacuum_paused_out_cleaning(hass: HomeAssistant, freezer: FrozenDa
     await advance(hass, freezer, 600)
     await set_state(hass, vacuum, "paused")
     await advance(hass, freezer, VACUUM_BLIP_SETTLE)
-    assert len(told(calls)) == 1
+    # no end, only that it has been left paused
+    assert [call.data["message"] for call in told(calls)] == [
+        "Bruno started",
+        "Bruno has been paused for 30 minutes, away from its dock",
+    ]
+
+
+async def test_vacuum_left_paused_is_told_once(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Paused away from its dock for half an hour is told to the phones once, with its buttons, and taken back once
+    it carries on"""
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    entry = await setup_vacuum(hass, device_id)
+    hass.states.async_set(vacuum, "docked", {"supported_features": 29500})
+
+    # as Bruno did on 7 November: out cleaning, on its way back, then paused where it was
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 228)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 414)
+    hass.states.async_set(vacuum, "paused", {"supported_features": 29500})
+    await hass.async_block_till_done()
+    await advance(hass, freezer, VACUUM_PAUSE_REMIND - 1)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started"]
+    await advance(hass, freezer, 1)
+    tag = f"appliance_{entry.entry_id}_paused"
+    paused = told(calls)[-1]
+    assert paused.data["message"] == "Bruno has been paused for 30 minutes, away from its dock"
+    assert paused.data["extra_data"]["mobile_push_notification_tag"] == tag
+    assert [action["title"] for action in paused.data["actions"]] == ["Resume", "Return to Dock"]
+
+    # the once, however long it stays paused
+    await advance(hass, freezer, 3 * VACUUM_PAUSE_REMIND)
+    assert len(told(calls)) == 2
+
+    # going on takes it back
+    await set_state(hass, vacuum, "returning")
+    cleared = {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True}
+    assert [call.data["extra_data"] for call in calls].count(cleared) == 1
+
+
+async def test_vacuum_paused_a_short_while_is_not_told(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 600)
+    await set_state(hass, vacuum, "paused")
+    await advance(hass, freezer, VACUUM_PAUSE_REMIND - 60)
+    await set_state(hass, vacuum, "cleaning")
+    # paused again starts the wait again
+    await set_state(hass, vacuum, "paused")
+    await advance(hass, freezer, VACUUM_PAUSE_REMIND - 60)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, VACUUM_PAUSE_REMIND)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started"]
+    assert not any("mobile_push_clear_notification" in call.data["extra_data"] for call in calls)
+
+
+async def test_vacuum_paused_on_its_dock_is_not_told(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    device_id, vacuum = add_vacuum(hass, platform="ecovacs")
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await advance(hass, freezer, 600)
+    await set_state(hass, vacuum, "returning")
+    await advance(hass, freezer, 30)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, 60)
+    # paused once back, as some integrations report, is waited out as the end
+    await set_state(hass, vacuum, "paused")
+    await advance(hass, freezer, VACUUM_PAUSE_REMIND)
+    assert [call.data["message"] for call in told(calls)] == ["Bruno started", "Bruno is finished", "Bruno is finished"]
 
 
 async def test_vacuum_cleaning_through_a_restart(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:

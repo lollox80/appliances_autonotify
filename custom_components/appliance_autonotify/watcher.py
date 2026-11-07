@@ -139,6 +139,7 @@ from .const import (
     NAME_PLACEHOLDER,
     OVEN_MESSAGE,
     PAUSE_KEY,
+    PAUSED_MESSAGES,
     PHASES_NOTIFIED,
     PLATFORM_TYPES,
     PREHEAT_FINISHED_KEYS,
@@ -193,6 +194,7 @@ from .const import (
     VACUUM_LIVE_DEFAULTS,
     VACUUM_MIDWAY_KIND,
     VACUUM_MIDWAY_SETTLE,
+    VACUUM_PAUSE_REMIND,
     VACUUM_PAUSED,
     VACUUM_PROGRAM_KEYS,
     VACUUM_PROGRESS_KEYS,
@@ -2031,6 +2033,9 @@ class VacuumWatcher(ApplianceWatcher):
         self._set_off: datetime | None = None
         # its progress has dropped below 100 since it set off, so isn't what the cleaning before left
         self._progressing = False
+        # left paused away from its dock: the wait to tell of it, and whether it has been, to take back once it goes on
+        self._cancel_paused: CALLBACK_TYPE | None = None
+        self._paused_told = False
 
     @callback
     def async_start(self) -> None:
@@ -2086,6 +2091,7 @@ class VacuumWatcher(ApplianceWatcher):
                 async_track_state_change_event(self.hass, self.entity_ids[STAGE_KEY], self._status_changed)
             )
         self.entry.async_on_unload(self._keep_running)
+        self.entry.async_on_unload(self._forget_paused)
         if self._restore():
             self._resume(state)
         if self.running:
@@ -2306,6 +2312,13 @@ class VacuumWatcher(ApplianceWatcher):
             # cleaning, paused or on its way back is the same cleaning
             self._keep_running()
             self._save()
+            if state == VACUUM_PAUSED:
+                if self._cancel_paused is None and not self._paused_told:
+                    self._cancel_paused = async_call_later(
+                        self.hass, VACUUM_PAUSE_REMIND, partial(self._paused_long, event.context)
+                    )
+            else:
+                await self._carried_on(event.context)
             if state in VACUUM_SHOWN and state != self._shown_activity:
                 # what it's doing, with the buttons that go with it
                 self._shown_activity = state
@@ -2377,13 +2390,60 @@ class VacuumWatcher(ApplianceWatcher):
         self._end_waited()
         self._pending = None
         self.running = False
+        await self._carried_on(context)
         await self._ended(True, _later(context))
+
+    @callback
+    def _forget_paused(self) -> None:
+        if self._cancel_paused is not None:
+            self._cancel_paused()
+            self._cancel_paused = None
+
+    async def _paused_long(self, context: Context, now: datetime) -> None:
+        """Still paused away from its dock a while after it was, told the once, to phones, with its buttons"""
+        self._cancel_paused = None
+        state = self.hass.states.get(self.cycle_entity_id) if self.cycle_entity_id else None
+        if not self.running or state is None or state.state != VACUUM_PAUSED:
+            return
+        self._paused_told = True
+        paused = PAUSED_MESSAGES.get(self.hass.config.language.split("-")[0], PAUSED_MESSAGES["en"])
+        message = paused.replace(NAME_PLACEHOLDER, self.name).replace("{minutes}", str(VACUUM_PAUSE_REMIND // 60))
+        title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
+        async with self._sending:
+            if not supernotify_available(self.hass):
+                await self._send_message(message, title, _later(context))
+                return
+            await self._supernotify(
+                message,
+                title,
+                _later(context),
+                mobile_only=True,
+                resend=True,
+                actions=self._live_actions() + self._tap_actions(),
+                extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": f"{self.tag}_paused"},
+            )
+
+    async def _carried_on(self, context: Context) -> None:
+        """No longer paused, so not to be told of, or no longer told of where it was"""
+        self._forget_paused()
+        if not self._paused_told:
+            return
+        self._paused_told = False
+        if supernotify_available(self.hass):
+            await self._supernotify(
+                self.name,
+                self.name,
+                context,
+                mobile_only=True,
+                extra_data={"mobile_push_notification_tag": f"{self.tag}_paused", "mobile_push_clear_notification": True},
+            )
 
     async def _stuck_for_good(self, context: Context, now: datetime) -> None:
         # stopped where it is, so no end to tell, only that it can't go on without someone
         self._end_waited()
         self._pending = None
         self.running = False
+        await self._carried_on(context)
         await self._ended(False, _later(context))
         await self._stuck(_later(context))
 
