@@ -21,8 +21,8 @@ or [LocalThings](https://github.com/mbillow/localthings), in English only. Any o
 ## What You Need
 
 - Home Assistant 2026.5 or later
-- An appliance set up with the Home Connect, SmartThings or LocalThings integration, a robot vacuum of any make, or
-  one with a power sensor
+- An appliance set up with the Home Connect, SmartThings or LocalThings integration, a robot vacuum of any make, a
+  Bambu Lab 3D printer set up with ha-bambulab, or one with a power sensor
 - [Supernotify](https://supernotify.rhizomatics.org.uk), installed from HACS, for Live Activities and for anything beyond a plain notification.
   - Optional, however without Supernotify, it only sends a start and an end notification, to every phone with the Home Assistant app unless you choose other notify entities.
   - `v2.14.0` recommended as minimum, though most features will work with earlier releases
@@ -87,6 +87,17 @@ report a past error again for a while as they reconnect, with the vacuum carryin
 
 Where the vacuum's integration reports them, as Roborock's does, its *Cleaning mode* is its program, its *Status*, such as sweeping or relocating, is its status, and its *Cleaning progress* fills the bar of the Live Activity,
 once it has dropped from the 100% left by the cleaning before. A vacuum has no time left to show, so its *Live Activity shows* is the *Program and status* by default, such as "Vac and mop · Sweeping", and its *Live Activity title* the *Appliance name only*.
+
+### 3D Printers
+
+A Bambu Lab printer set up with [ha-bambulab](https://github.com/greghesp/ha-bambulab) is found and set up like the
+other appliances, with each print as the cycle. It starts as the printer gets ready, heating and levelling its bed, and
+the Live Activity tells what it's doing at each stage, counting down to the end from the time left, which stops while
+the print is paused. The name of the print fills in `{program}`, but isn't put in the title, being often that of the
+settings it was sliced with. A finished print is told as for any appliance, a failed or cancelled one only has its Live
+Activity closed. The printer going offline for a while leaves the print as it was.
+
+While any appliance is paused, its Live Activity says so with no countdown, and counts down again once it carries on.
 
 ### Power Monitored Appliances
 

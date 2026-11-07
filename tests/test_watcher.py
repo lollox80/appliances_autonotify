@@ -70,11 +70,14 @@ async def test_cycle_with_supernotify(hass: HomeAssistant) -> None:
         },
     }
 
-    # paused and resumed is the same cycle
+    # paused and resumed is the same cycle, the Live Activity saying so
     await set_state(hass, appliance.cycle, "pause")
     await set_state(hass, appliance.cycle, "unavailable")
+    assert len(calls) == 2
+    assert calls[1].data["message"] == "pause"
     await set_state(hass, appliance.cycle, "run")
-    assert len(calls) == 1
+    assert len(calls) == 3
+    del calls[1:]
 
     await set_state(hass, appliance.cycle, "finished")
     assert len(calls) == 3

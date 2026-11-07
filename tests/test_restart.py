@@ -428,6 +428,9 @@ async def test_home_connect_cycle_carried_on_without_starting_again(
     assert entry.runtime_data.running
     await set_state(hass, appliance.cycle, "pause")
     await set_state(hass, appliance.cycle, "run")
+    # paused and going again only bring the Live Activity up to date
+    assert all(call.data["extra_data"].get("silent") for call in calls[1:])
+    del calls[1:]
     assert messages(calls) == ["Dishwasher started"]
 
     # finished while Home Assistant was off, and told as it starts
