@@ -413,6 +413,9 @@ STATES_PAUSED: Final[tuple[str, ...]] = ("pause",)
 # seconds the finish time can drift from the one on the Live Activity before it's brought up to date, since the time
 # left may be counted only in whole minutes
 FINISH_DRIFT: Final[float] = 120
+# seconds past its finish time, or past the latest update after that, that a Live Activity on Android takes itself
+# away, should the phone miss whatever closes it
+LIVE_TIMEOUT_MARGIN: Final[int] = 1800
 # seconds an appliance is left to settle before the cycle is over
 CYCLE_SETTLE: Final[float] = 10
 # seconds after the cycle starts before it's told of, since an integration may report its program and stage a moment

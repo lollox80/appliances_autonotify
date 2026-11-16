@@ -129,6 +129,7 @@ from .const import (
     LIVE_DETAIL_TIME,
     LIVE_PROGRAM_STATUS,
     LIVE_SETTLE,
+    LIVE_TIMEOUT_MARGIN,
     LIVE_TITLE,
     LIVE_TITLE_NAME,
     LIVE_TITLE_PROGRAM,
@@ -1065,6 +1066,10 @@ class ApplianceWatcher:
         if finish_time is not None:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
+            # Android only: the phone itself takes it away a while after the finish, so that one which missed the
+            # end isn't left counting on below zero, and each update, as one still running sends, puts that off
+            left = max(int(finish_time.timestamp() - dt_util.utcnow().timestamp()), 0)
+            data["timeout"] = left + LIVE_TIMEOUT_MARGIN
         elif progress is not None:
             # the Android status bar chip shows this in place of the time left, so only with no time to show, and
             # short, since a longer text leaves the chip with only its icon

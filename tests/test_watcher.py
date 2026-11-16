@@ -13,7 +13,13 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
-from custom_components.appliance_autonotify.const import ANDROID_CHANNEL, CYCLE_SETTLE, DOMAIN, PREHEAT_SETTLE
+from custom_components.appliance_autonotify.const import (
+    ANDROID_CHANNEL,
+    CYCLE_SETTLE,
+    DOMAIN,
+    LIVE_TIMEOUT_MARGIN,
+    PREHEAT_SETTLE,
+)
 
 from .conftest import (
     DISHWASHER_PROGRAMS,
@@ -135,6 +141,8 @@ async def test_progress_updates_mobile_only(hass: HomeAssistant) -> None:
             "progress_max": 100,
             "chronometer": True,
             "when": 1791323056,
+            # a finish already gone by, so only the margin
+            "timeout": LIVE_TIMEOUT_MARGIN,
             "silent": True,
             "alert_once": True,
         },
@@ -1428,3 +1436,33 @@ async def test_context_passed_on_from_a_button(hass: HomeAssistant, freezer) -> 
         await hass.async_block_till_done()
     assert switched[0].context == pressed
     assert calls[-1].context == pressed
+
+
+async def test_live_activity_takes_itself_away_after_the_finish(hass: HomeAssistant, freezer) -> None:
+    """A phone that misses the end isn't left counting on below zero (Samsung dryer, 16/11)"""
+    freezer.move_to("2026-11-16T19:55:00+00:00")
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    await setup_watcher(hass, appliance)
+
+    await set_state(hass, appliance.cycle, "run")
+    await set_state(hass, appliance.finish_time, "2026-11-16T20:02:00+00:00")
+    await set_state(hass, appliance.progress, "97")
+    extra = calls[-1].data["extra_data"]
+    assert extra["when"] == int(dt_util.parse_datetime("2026-11-16T20:02:00+00:00").timestamp())
+    assert extra["timeout"] == 7 * 60 + LIVE_TIMEOUT_MARGIN
+
+    # still going past its finish, each update puts it off again from then
+    freezer.move_to("2026-11-16T20:10:00+00:00")
+    await set_state(hass, appliance.progress, "100")
+    assert calls[-1].data["extra_data"]["timeout"] == LIVE_TIMEOUT_MARGIN
+
+
+async def test_no_timeout_without_a_finish_time(hass: HomeAssistant) -> None:
+    appliance = add_appliance(hass)
+    calls = mock_supernotify(hass)
+    await setup_watcher(hass, appliance)
+
+    await set_state(hass, appliance.cycle, "run")
+    await set_state(hass, appliance.progress, "5")
+    assert "timeout" not in calls[-1].data["extra_data"]
