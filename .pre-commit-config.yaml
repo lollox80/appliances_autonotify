@@ -2,6 +2,16 @@ default_language_version:
   python: python3.14
 
 repos:
+  - repo: local
+    hooks:
+      - id: optimize-png
+        name: optimize PNGs
+        entry: python docgen/optimize_png.py
+        language: python
+        additional_dependencies: [pngquant-cli==3.0.3]
+        types: [png]
+        # the docs' own, as the docs build optimised, and not the brand icons Home Assistant shows
+        files: ^docs/
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -10,7 +20,7 @@ repos:
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.2
+    rev: v0.17.5
     hooks:
      # Run the linter.
       - id: ruff-check
@@ -30,31 +40,19 @@ repos:
         args:
           - --quiet
         files: ^(custom_components)/.+\.py$
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v2.4.0'
+  # mypy from the project's own environment, so it type checks against the locked Home Assistant
+  # (probatio since 2026.10) rather than a separately resolved set of stubs that drifts from it.
+  # --frozen syncs the environment to uv.lock first, without re-locking: the exclude-newer window
+  # moves daily, so a re-lock here would change uv.lock and fail the hook
+  - repo: local
     hooks:
       - id: mypy
-        args:
-          - --pretty
-          - --explicit-package-bases
-          - --show-error-codes
-          - --show-error-context
+        name: mypy
+        entry: uv run --frozen mypy --pretty --explicit-package-bases --show-error-codes --show-error-context
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
         exclude: docgen/.*\.py
-        additional_dependencies:
-          - homeassistant-stubs==2026.9.3
-          - pytest-homeassistant-custom-component>=0.13.356
-          - types-python-slugify>=8.0.2.20240310
-          - voluptuous-stubs>=0.1.1
-          - pytest
-          - types-cachetools
-          - types-requests
-          - types-Pillow
-          - types-PyYAML
-          - types-aiofiles
-          - types-beautifulsoup4
-          - pytest_unordered
-          - pytest_mock
-          - pytest_httpserver
   - repo: local
     hooks:
       - id: diagram-thumbnails
@@ -64,24 +62,12 @@ repos:
         language: system
         files: ^docs/developer/diagrams/.+\.html$
   - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.92
+    rev: v0.0.104
     hooks:
       - id: ty
-        # docs group for docgen's bs4
-        args: [--isolated, --no-python-downloads, --group, docs]
-
-ci:
-    autofix_commit_msg: |
-        [pre-commit.ci] auto fixes from pre-commit.com hooks
-
-        for more information, see https://pre-commit.ci
-    autofix_prs: true
-    autoupdate_branch: ''
-    autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
-    autoupdate_schedule: weekly
-    skip:
-      - diagram-thumbnails
-      - bandit
-      - mypy
-      - ty
-    submodules: false
+        # docs group for docgen's bs4; --frozen as for mypy above
+        args: [--frozen, --isolated, --no-python-downloads, --group, docs]
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

@@ -14,6 +14,9 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+# the list only reflects what the tracker holds, with nothing to fetch
+PARALLEL_UPDATES = 0
+
 # between the entry id of the appliance and the key of its item, neither of which has it
 UID_SEPARATOR = "|"
 
@@ -28,7 +31,6 @@ class MaintenanceList(TodoListEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "maintenance"
     _attr_unique_id = "maintenance"
-    _attr_icon = "mdi:wrench-clock"
     _attr_supported_features = TodoListEntityFeature.UPDATE_TODO_ITEM | TodoListEntityFeature.DELETE_TODO_ITEM
 
     def __init__(self, tracker: MaintenanceTracker) -> None:
@@ -38,7 +40,7 @@ class MaintenanceList(TodoListEntity):
         self.async_on_remove(self._tracker.async_add_listener(self.async_write_ha_state))
 
     @property
-    def todo_items(self) -> list[TodoItem]:
+    def todo_items(self) -> list[TodoItem]:  # ty: ignore[incompatible-property-override]
         return [
             TodoItem(
                 uid=f"{entry_id}{UID_SEPARATOR}{item.key}",

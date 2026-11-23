@@ -9,7 +9,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
 from custom_components.appliance_autonotify.const import (
     DOMAIN,
@@ -20,8 +19,9 @@ from custom_components.appliance_autonotify.const import (
     VACUUM_PAUSE_REMIND,
     VACUUM_SETTLE,
 )
+from tests.ha_testing import MockConfigEntry, async_fire_time_changed, async_mock_service
 
-from .conftest import mock_supernotify
+from .conftest import mock_supernotify, placeholders, schema
 from .test_watcher import ANDROID, ended, pass_time, set_state
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ async def setup_vacuum(hass: HomeAssistant, device_id: str, **options: object) -
 async def test_vacuum_is_set_up_automatically(hass: HomeAssistant) -> None:
     device_id, _ = add_vacuum(hass)
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-    assert result["description_placeholders"]["found"] == "Appliances found:\n\n- Bruno"
+    assert placeholders(result)["found"] == "Appliances found:\n\n- Bruno"
     await hass.config_entries.flow.async_configure(result["flow_id"], {"auto_discover": True})
     await hass.async_block_till_done()
 
@@ -704,7 +704,7 @@ async def test_vacuum_wait_on_its_dock_is_a_setting(hass: HomeAssistant, freezer
     # offered with the end, as it comes and so not kept
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["data_schema"] is not None
-    end = next(v for k, v in result["data_schema"].schema.items() if k == "end")
+    end = next(v for k, v in schema(result).items() if k == "end")
     assert next(k for k in end.schema.schema if k == "grace_period").default() == VACUUM_SETTLE
     form: dict[str, dict[str, object]] = {"start": {}, "notify": {}}
     await hass.config_entries.options.async_configure(result["flow_id"], form | {"end": {"grace_period": VACUUM_SETTLE}})
@@ -944,6 +944,40 @@ async def test_vacuum_shows_its_cleaning_mode_status_and_progress(hass: HomeAssi
     assert (calls[-1].data["message"], calls[-1].data["extra_data"]["progress"]) == ("vac_and_mop · relocating", 5)
 
 
+@pytest.mark.parametrize(("back_at", "complete"), [(100, True), (87, False)])
+async def test_vacuum_progress_back_from_unavailable_on_its_way_home(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, back_at: int, complete: bool
+) -> None:
+    """Progress going unavailable as the vacuum heads back, with its cloud connection, and coming back at 100, which
+    left a Roborock's Live Activity at 51% all the way home on 22/11. Its progress is shown as it comes back, 100 or
+    short of it where it couldn't get everywhere, and a 100 still ends the cleaning soon after it's back"""
+    device_id, vacuum, status, _, progress = add_roborock(hass)
+    calls = mock_supernotify(hass)
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, status, "sweeping")
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, progress, "0")
+    await set_state(hass, progress, "51")
+    await set_state(hass, status, "returning_home")
+    await set_state(hass, vacuum, "returning")
+    assert (calls[-1].data["message"], calls[-1].data["extra_data"]["progress"]) == ("vac_and_mop · returning_home", 51)
+
+    await set_state(hass, progress, "unavailable")
+    await set_state(hass, progress, str(back_at))
+    assert (calls[-1].data["message"], calls[-1].data["extra_data"]["progress"]) == (
+        "vac_and_mop · returning_home",
+        back_at,
+    )
+
+    count = len(calls)
+    await set_state(hass, vacuum, "docked")
+    await advance(hass, freezer, VACUUM_COMPLETE_SETTLE)
+    assert len(calls) > count if complete else len(calls) == count
+    await advance(hass, freezer, VACUUM_SETTLE)
+    assert calls[-1].data["message"] == "Bruno is finished"
+
+
 @pytest.mark.parametrize(
     ("detail", "title", "message"),
     [
@@ -971,10 +1005,10 @@ async def test_vacuum_live_activity_settings(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["data_schema"] is not None
-    fields = {str(k): k for k in result["data_schema"].schema}
+    fields = {str(k): k for k in schema(result)}
     assert "notify_progress" not in fields
     assert (fields["live_title"].default(), fields["live_detail"].default()) == ("name", "program_status")
-    detail = result["data_schema"].schema[fields["live_detail"]]
+    detail = schema(result)[fields["live_detail"]]
     assert detail.config["options"] == ["program_status", "status", "program"]
 
     form: dict[str, object] = {"start": {}, "end": {}, "notify": {}}

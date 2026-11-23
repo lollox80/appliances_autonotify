@@ -152,6 +152,62 @@ ACTION_TITLES: Final[dict[str, dict[str, str]]] = {
         ACTION_RESUME: "Riprendi",
         ACTION_RETURN: "Torna alla base",
     },
+    "de": {
+        ACTION_FINISHED: "Erledigt",
+        ACTION_REMIND: "Später erinnern",
+        ACTION_SWITCH_OFF: "Steckdose aus",
+        ACTION_PAUSE: "Pause",
+        ACTION_RESUME: "Fortsetzen",
+        ACTION_RETURN: "Zur Station",
+    },
+    "nl": {
+        ACTION_FINISHED: "Klaar",
+        ACTION_REMIND: "Later herinneren",
+        ACTION_SWITCH_OFF: "Stekker uit",
+        ACTION_PAUSE: "Pauze",
+        ACTION_RESUME: "Hervatten",
+        ACTION_RETURN: "Terug naar dock",
+    },
+    "es": {
+        ACTION_FINISHED: "Terminado",
+        ACTION_REMIND: "Recordar más tarde",
+        ACTION_SWITCH_OFF: "Apagar enchufe",
+        ACTION_PAUSE: "Pausa",
+        ACTION_RESUME: "Reanudar",
+        ACTION_RETURN: "Volver a la base",
+    },
+    "fr": {
+        ACTION_FINISHED: "Terminé",
+        ACTION_REMIND: "Me rappeler plus tard",
+        ACTION_SWITCH_OFF: "Éteindre la prise",
+        ACTION_PAUSE: "Pause",
+        ACTION_RESUME: "Reprendre",
+        ACTION_RETURN: "Retour à la base",
+    },
+    "pl": {
+        ACTION_FINISHED: "Gotowe",
+        ACTION_REMIND: "Przypomnij później",
+        ACTION_SWITCH_OFF: "Wyłącz gniazdko",
+        ACTION_PAUSE: "Pauza",
+        ACTION_RESUME: "Wznów",
+        ACTION_RETURN: "Wróć do stacji",
+    },
+    "zh": {
+        ACTION_FINISHED: "已完成",
+        ACTION_REMIND: "稍后提醒",
+        ACTION_SWITCH_OFF: "关闭插座",
+        ACTION_PAUSE: "暂停",
+        ACTION_RESUME: "继续",
+        ACTION_RETURN: "返回基座",
+    },
+    "hi": {
+        ACTION_FINISHED: "पूरा हुआ",
+        ACTION_REMIND: "बाद में याद दिलाएं",
+        ACTION_SWITCH_OFF: "प्लग बंद करें",
+        ACTION_PAUSE: "रोकें",
+        ACTION_RESUME: "फिर से शुरू करें",
+        ACTION_RETURN: "डॉक पर लौटें",
+    },
 }
 MOBILE_ACTION_EVENT: Final[str] = "mobile_app_notification_action"
 # action buttons Android shows on a notification, any after those being left out
@@ -186,6 +242,25 @@ ACTION_TRACK_MAINTENANCE: Final[str] = "APPLIANCE_TRACK_MAINTENANCE_"
 MAINTENANCE_ACTION_TITLES: Final[dict[str, dict[str, str]]] = {
     "en": {ACTION_MAINTAINED: "Done", ACTION_MAINTENANCE_LATER: "In a Month", ACTION_TRACK_MAINTENANCE: "Track Maintenance"},
     "it": {ACTION_MAINTAINED: "Fatto", ACTION_MAINTENANCE_LATER: "Tra un mese", ACTION_TRACK_MAINTENANCE: "Segui manutenzione"},
+    "de": {
+        ACTION_MAINTAINED: "Erledigt",
+        ACTION_MAINTENANCE_LATER: "In einem Monat",
+        ACTION_TRACK_MAINTENANCE: "Wartung verfolgen",
+    },
+    "nl": {
+        ACTION_MAINTAINED: "Gedaan",
+        ACTION_MAINTENANCE_LATER: "Over een maand",
+        ACTION_TRACK_MAINTENANCE: "Onderhoud bijhouden",
+    },
+    "es": {ACTION_MAINTAINED: "Hecho", ACTION_MAINTENANCE_LATER: "En un mes", ACTION_TRACK_MAINTENANCE: "Seguir mantenimiento"},
+    "fr": {ACTION_MAINTAINED: "Fait", ACTION_MAINTENANCE_LATER: "Dans un mois", ACTION_TRACK_MAINTENANCE: "Suivre l'entretien"},
+    "pl": {
+        ACTION_MAINTAINED: "Zrobione",
+        ACTION_MAINTENANCE_LATER: "Za miesiąc",
+        ACTION_TRACK_MAINTENANCE: "Śledź konserwację",
+    },
+    "zh": {ACTION_MAINTAINED: "已完成", ACTION_MAINTENANCE_LATER: "一个月后", ACTION_TRACK_MAINTENANCE: "跟踪维护"},
+    "hi": {ACTION_MAINTAINED: "हो गया", ACTION_MAINTENANCE_LATER: "एक महीने में", ACTION_TRACK_MAINTENANCE: "रखरखाव ट्रैक करें"},
 }
 # the name of each item, and what its notification says, by the language of Home Assistant as for the buttons
 MAINTENANCE_NAMES: Final[dict[str, dict[str, str]]] = {
@@ -203,6 +278,55 @@ MAINTENANCE_NAMES: Final[dict[str, dict[str, str]]] = {
         "machine_clean": "Pulizia della macchina",
         "condenser": "Pulizia del condensatore",
     },
+    "de": {
+        "drum_clean": "Trommelreinigung",
+        "filter": "Filterreinigung",
+        "lint_filter": "Flusensiebreinigung",
+        "machine_clean": "Maschinenreinigung",
+        "condenser": "Kondensatorreinigung",
+    },
+    "nl": {
+        "drum_clean": "Trommel reinigen",
+        "filter": "Filter reinigen",
+        "lint_filter": "Pluizenfilter reinigen",
+        "machine_clean": "Machine reinigen",
+        "condenser": "Condensor reinigen",
+    },
+    "es": {
+        "drum_clean": "Limpieza del tambor",
+        "filter": "Limpieza del filtro",
+        "lint_filter": "Limpieza del filtro de pelusa",
+        "machine_clean": "Limpieza de la máquina",
+        "condenser": "Limpieza del condensador",
+    },
+    "fr": {
+        "drum_clean": "Nettoyage du tambour",
+        "filter": "Nettoyage du filtre",
+        "lint_filter": "Nettoyage du filtre à peluches",
+        "machine_clean": "Nettoyage de la machine",
+        "condenser": "Nettoyage du condenseur",
+    },
+    "pl": {
+        "drum_clean": "Czyszczenie bębna",
+        "filter": "Czyszczenie filtra",
+        "lint_filter": "Czyszczenie filtra kłaczków",
+        "machine_clean": "Czyszczenie urządzenia",
+        "condenser": "Czyszczenie skraplacza",
+    },
+    "zh": {
+        "drum_clean": "滚筒清洁",
+        "filter": "过滤器清洁",
+        "lint_filter": "绒毛过滤器清洁",
+        "machine_clean": "机器清洁",
+        "condenser": "冷凝器清洁",
+    },
+    "hi": {
+        "drum_clean": "ड्रम की सफ़ाई",
+        "filter": "फ़िल्टर की सफ़ाई",
+        "lint_filter": "लिंट फ़िल्टर की सफ़ाई",
+        "machine_clean": "मशीन की सफ़ाई",
+        "condenser": "कंडेंसर की सफ़ाई",
+    },
 }
 MAINTENANCE_MESSAGES: Final[dict[str, dict[str, str]]] = {
     "en": {
@@ -215,6 +339,41 @@ MAINTENANCE_MESSAGES: Final[dict[str, dict[str, str]]] = {
         "cycles": "{item}, {cycles} cicli dall'ultima",
         "lifespan": "{item} al {value}%",
     },
+    "de": {
+        "cycle": "{item}, 1 Zyklus seit dem letzten Mal",
+        "cycles": "{item}, {cycles} Zyklen seit dem letzten Mal",
+        "lifespan": "{item} bei {value}%",
+    },
+    "nl": {
+        "cycle": "{item}, 1 cyclus sinds de vorige keer",
+        "cycles": "{item}, {cycles} cycli sinds de vorige keer",
+        "lifespan": "{item} op {value}%",
+    },
+    "es": {
+        "cycle": "{item}, 1 ciclo desde la última vez",
+        "cycles": "{item}, {cycles} ciclos desde la última vez",
+        "lifespan": "{item} al {value}%",
+    },
+    "fr": {
+        "cycle": "{item}, 1 cycle depuis la dernière fois",
+        "cycles": "{item}, {cycles} cycles depuis la dernière fois",
+        "lifespan": "{item} à {value} %",
+    },
+    "pl": {
+        "cycle": "{item}, 1 cykl od ostatniego razu",
+        "cycles": "{item}, liczba cykli od ostatniego razu: {cycles}",
+        "lifespan": "{item}: {value}%",
+    },
+    "zh": {
+        "cycle": "{item}，距上次已 1 个周期",
+        "cycles": "{item}，距上次已 {cycles} 个周期",
+        "lifespan": "{item} 剩余 {value}%",
+    },
+    "hi": {
+        "cycle": "{item}, पिछली बार से 1 चक्र",
+        "cycles": "{item}, पिछली बार से {cycles} चक्र",
+        "lifespan": "{item} {value}% पर",
+    },
 }
 
 # the text of the Android status bar chip, which shows it in full only up to about 7 characters
@@ -225,7 +384,17 @@ PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"
 PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
 # a robot vacuum that has stopped where it is, stuck or lifted, and won't go on by itself, by the language of Home
 # Assistant as for the buttons, English for any other
-STUCK_MESSAGES: Final[dict[str, str]] = {"en": "{name} needs help", "it": "{name} ha bisogno di aiuto"}
+STUCK_MESSAGES: Final[dict[str, str]] = {
+    "en": "{name} needs help",
+    "it": "{name} ha bisogno di aiuto",
+    "de": "{name} braucht Hilfe",
+    "nl": "{name} heeft hulp nodig",
+    "es": "{name} necesita ayuda",
+    "fr": "{name} a besoin d'aide",
+    "pl": "{name} potrzebuje pomocy",
+    "zh": "{name} 需要帮助",
+    "hi": "{name} को मदद चाहिए",
+}
 # a robot vacuum left paused away from its dock, as by someone pausing it and forgetting, or by a button pressed in passing
 PAUSED_MESSAGES: Final[dict[str, str]] = {
     "en": "{name} has been paused for {minutes} minutes, away from its dock",
@@ -253,8 +422,15 @@ OVEN_MESSAGE: Final[str] = "{program}, {current}{unit}"
 SUPERNOTIFY_PRESENT: Final[str] = "Supernotify is installed, so mobile apps will show a Live Activity for each cycle."
 SUPERNOTIFY_MISSING: Final[str] = (
     "**Supernotify is not installed.** Only a plain start and end notification can be sent, to every phone with the "
-    "Home Assistant app, with no Live Activity. Install Supernotify from HACS for the full experience."
+    "Home Assistant app, with no Live Activity. Install Supernotify from Marketplace for the full experience."
 )
+# an appliance of an integration not yet tried on a real appliance, as it's offered to be added
+BETA_NOTICE: Final[str] = (
+    "\n\n**Support for {integration} is new**, written from the integration's source but not yet tried with a real "
+    "appliance, so notifications may come at the wrong time or not at all. Once its first cycle is over you'll be "
+    "asked how it went."
+)
+BETA_FOUND: Final[str] = " (new, offered to be added)"
 
 # activities of a robot vacuum, as Home Assistant has them for every make
 VACUUM_CLEANING: Final[str] = "cleaning"
@@ -303,14 +479,20 @@ VACUUM_PROGRESS_KEYS: Final[tuple[str, ...]] = ("clean_percent",)
 # along it is, when it will finish, and the program
 CYCLE_KEY: Final[str] = "operation_state"
 PROGRESS_KEY: Final[str] = "program_progress"
-# the time left, which where an appliance reports it is fresher than its finish time, and is how that's worked out
-REMAINING_KEY: Final[str] = "remaining_time"
 FINISH_TIME_KEY: Final[str] = "program_finish_time"
 # selects, unlike the others, of the program under way, and of the one chosen, which is all an oven reports
 SELECTED_PROGRAM_KEYS: Final[tuple[str, ...]] = ("active_program", "selected_program")
 # the name of the print under way, which is to a 3D printer what the program is to an appliance
 TASK_KEY: Final[str] = "subtask_name"
 PROGRAM_KEYS: Final[tuple[str, ...]] = (*SELECTED_PROGRAM_KEYS, TASK_KEY)
+# how long is left, as a duration, for an integration that reports no finish time
+REMAINING_TIME_KEY: Final[str] = "remaining_time"
+# how long the cycle takes in all, as a duration, from which its progress is worked out where it reports none
+TOTAL_TIME_KEY: Final[str] = "total_time"
+# or how long it has been going, which with the time left is the same
+ELAPSED_TIME_KEY: Final[str] = "elapsed_time"
+# seconds between updates of progress worked out from the time, there being no change of the appliance's to go by
+PROGRESS_TICK: Final[float] = 60
 # what the appliance is doing within its cycle, such as drying then cooling, or a 3D printer heating its bed then
 # printing, which Home Connect doesn't report
 STAGE_KEY: Final[str] = "stage"
@@ -362,27 +544,30 @@ TARGET_TEMPERATURE_KEY: Final[str] = "setpoint_temperature"
 CAVITY_TEMPERATURE_KEY: Final[str] = "oven_current_cavity_temperature"
 PREHEAT_FINISHED_KEYS: Final[tuple[str, ...]] = ("preheat_finished", "regular_preheat_finished")
 FAST_PREHEAT_KEY: Final[str] = "fast_pre_heat"
-# domain, by translation key, of each entity of an appliance that's made use of
-ENTITY_DOMAINS: Final[dict[str, str]] = {
-    PROGRESS_KEY: "sensor",
-    STAGE_KEY: "sensor",
-    FINISH_TIME_KEY: "sensor",
-    REMAINING_KEY: "sensor",
-    **dict.fromkeys(SELECTED_PROGRAM_KEYS, "select"),
-    TASK_KEY: "sensor",
-    TARGET_TEMPERATURE_KEY: "number",
-    CAVITY_TEMPERATURE_KEY: "sensor",
-    **dict.fromkeys(PREHEAT_FINISHED_KEYS, "sensor"),
-    FAST_PREHEAT_KEY: "switch",
-    PROBLEM_KEY: "binary_sensor",
-    FAULTS_KEY: "binary_sensor",
-    LAYER_KEY: "sensor",
-    LAYERS_KEY: "sensor",
-    PAUSE_KEY: "button",
-    RESUME_KEY: "button",
-    WEIGHT_KEY: "sensor",
-    LENGTH_KEY: "sensor",
-    BED_TEMPERATURE_KEY: "sensor",
+# domains, by translation key, of each entity of an appliance that's made use of, a program being a select where it
+# can be chosen, and only a sensor where it can't
+ENTITY_DOMAINS: Final[dict[str, tuple[str, ...]]] = {
+    PROGRESS_KEY: ("sensor",),
+    STAGE_KEY: ("sensor",),
+    FINISH_TIME_KEY: ("sensor",),
+    REMAINING_TIME_KEY: ("sensor",),
+    TOTAL_TIME_KEY: ("sensor",),
+    ELAPSED_TIME_KEY: ("sensor",),
+    **dict.fromkeys(SELECTED_PROGRAM_KEYS, ("select", "sensor")),
+    TASK_KEY: ("sensor",),
+    TARGET_TEMPERATURE_KEY: ("number",),
+    CAVITY_TEMPERATURE_KEY: ("sensor",),
+    **dict.fromkeys(PREHEAT_FINISHED_KEYS, ("sensor",)),
+    FAST_PREHEAT_KEY: ("switch",),
+    PROBLEM_KEY: ("binary_sensor",),
+    FAULTS_KEY: ("binary_sensor",),
+    LAYER_KEY: ("sensor",),
+    LAYERS_KEY: ("sensor",),
+    PAUSE_KEY: ("button",),
+    RESUME_KEY: ("button",),
+    WEIGHT_KEY: ("sensor",),
+    LENGTH_KEY: ("sensor",),
+    BED_TEMPERATURE_KEY: ("sensor",),
 }
 # the type of appliance of a platform that has only the one
 PLATFORM_TYPES: Final[dict[str, str]] = {"bambu_lab": "3d_printer"}
@@ -405,14 +590,11 @@ STATES_FINISHED: Final[tuple[str, ...]] = ("finished", "inactive", "stop", "fini
 STATES_SETTLING: Final[tuple[str, ...]] = ("ready", "idle")
 # stages that mean the cycle is over, though the cycle state may stay running a long while after, as a dryer's does
 # while it tumbles its load now and then so it won't crease
-STAGES_FINISHED: Final[tuple[str, ...]] = ("finished", "finish", "wrinkle_prevent")
+STAGES_FINISHED: Final[tuple[str, ...]] = ("finished", "finish", "wrinkle_prevent", "wrinkle_care", "anti_crease")
 # stages that say nothing of what it's doing
-STAGES_NONE: Final[tuple[str, ...]] = ("none", "idle")
+STAGES_NONE: Final[tuple[str, ...]] = ("none", "idle", "not_running")
 # paused part way through, with the time left standing still
 STATES_PAUSED: Final[tuple[str, ...]] = ("pause",)
-# seconds the finish time can drift from the one on the Live Activity before it's brought up to date, since the time
-# left may be counted only in whole minutes
-FINISH_DRIFT: Final[float] = 120
 # seconds past its finish time, or past the latest update after that, that a Live Activity on Android takes itself
 # away, should the phone miss whatever closes it
 LIVE_TIMEOUT_MARGIN: Final[int] = 1800
@@ -441,6 +623,9 @@ PROGRESS_NOTIFY_STEP: Final[int] = 10
 # from here on the end is in sight and the bar is being watched, so it's kept closer to the appliance
 PROGRESS_FINAL: Final[int] = 90
 PROGRESS_FINAL_STEP: Final[int] = 2
+# seconds the finish can move before the Live Activity's countdown is put right, more than the minute a remaining
+# time rounds to, so an appliance counting down only has its countdown sent again when it changes its mind
+FINISH_MOVED: Final[float] = 120
 
 MOBILE_PUSH_TRANSPORT: Final[str] = "mobile_push"
 # Android notification channel of its own, made with sound on the first notification, since a Live Update in the

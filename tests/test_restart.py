@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.appliance_autonotify.const import (
     CYCLE_SETTLE,
@@ -16,6 +15,7 @@ from custom_components.appliance_autonotify.const import (
     VACUUM_MIDWAY_SETTLE,
     VACUUM_SETTLE,
 )
+from tests.ha_testing import MockConfigEntry
 
 from .conftest import add_appliance, mock_supernotify, setup_watcher
 from .test_vacuum import add_vacuum, setup_vacuum
@@ -76,7 +76,6 @@ async def test_power_end_waited_for_through_a_restart(hass: HomeAssistant, freez
     assert len(calls) == 1
     await wait(hass, freezer, 1)
     assert messages(calls) == ["Washer started", "Washer is finished", "Washer is finished"]
-    # a washer, with maintenance to track, offers it on its first end
     assert calls[2].data == ended("Washer", entry.entry_id, "mdi:washing-machine", track=True, force_resend=True)
     assert not entry.runtime_data.running
 

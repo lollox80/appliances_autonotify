@@ -7,11 +7,10 @@ from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_DEVICE_ID
-from homeassistant.core import Context, HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import Context, HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
 from custom_components.appliance_autonotify.const import (
     ANDROID_CHANNEL,
@@ -20,6 +19,7 @@ from custom_components.appliance_autonotify.const import (
     LIVE_TIMEOUT_MARGIN,
     PREHEAT_SETTLE,
 )
+from tests.ha_testing import MockConfigEntry, async_fire_time_changed, async_mock_service
 
 from .conftest import (
     DISHWASHER_PROGRAMS,
@@ -763,7 +763,7 @@ async def test_progress_update_cannot_overtake_the_end(hass: HomeAssistant) -> N
     held = asyncio.Event()
     release = asyncio.Event()
 
-    async def slow_enquiry(call: ServiceCall) -> dict[str, list[str]]:
+    async def slow_enquiry(call: ServiceCall) -> ServiceResponse:
         if not held.is_set():
             held.set()
             await release.wait()

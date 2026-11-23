@@ -2,8 +2,18 @@
     "domain": "appliance_autonotify",
     "name": "Appliance Auto Notify",
     "after_dependencies": [
+        "energy",
         "home_connect",
+        "homeconnect_ws",
+        "lg_thinq",
+        "localthings",
+        "miele",
+        "smartthings",
         "supernotify"
+    ],
+    "categories": [
+        "appliances_cleaning",
+        "messaging_notifications"
     ],
     "codeowners": [
         "@jeyrb"
@@ -16,6 +26,7 @@
     "integration_type": "service",
     "iot_class": "calculated",
     "issue_tracker": "https://github.com/rhizomatics/appliance_autonotify/issues",
+    "quality_scale": "gold",
     "requirements": [],
-    "version": "0.13.0"
+    "version": "1.0.1"
 }

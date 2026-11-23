@@ -1,0 +1,59 @@
+# Releases appliance_autonotify when a version tag (v1.2.3, v1.3.0-beta1) is pushed - see policies/release_workflows.md in
+# rhizomatics/hq. CI runs on the tag, then the zip HACS installs from (hacs.json zip_release) is built with its
+# checksum and build provenance, and attached to the GitHub release, which is published with the version's
+# CHANGELOG.md notes. Releases are immutable, so nothing can be added once one is published.
+
+name: Publish Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Nothing by default; each job grants only what it needs (OpenSSF Scorecard Token-Permissions).
+permissions: {}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # for the build provenance attestation of the zip
+      id-token: write
+      attestations: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Package release zip
+      run: |
+        mkdir release
+        cd custom_components/appliance_autonotify
+        zip -r "$GITHUB_WORKSPACE/release/appliance_autonotify.zip" . -x "__pycache__/*" "*/__pycache__/*"
+        cd "$GITHUB_WORKSPACE/release"
+        sha256sum appliance_autonotify.zip > appliance_autonotify.zip.sha256
+
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: release/appliance_autonotify.zip
+
+    - name: Keep the files for the release
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: release
+        path: release/
+
+  github-release:
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/github-release.yml
+    with:
+      artifact: release

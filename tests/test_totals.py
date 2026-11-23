@@ -8,7 +8,6 @@ from unittest.mock import patch
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.appliance_autonotify.const import VACUUM_SETTLE
 from custom_components.appliance_autonotify.totals import (
@@ -19,6 +18,7 @@ from custom_components.appliance_autonotify.totals import (
     speak_energy,
     spoken,
 )
+from tests.ha_testing import MockConfigEntry
 
 from .conftest import mock_supernotify
 from .test_restart import restart, setup_kept_power_watcher

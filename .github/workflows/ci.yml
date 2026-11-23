@@ -5,8 +5,10 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  # the release workflow runs this on the tag before building
+  workflow_call:
   schedule:
-    # weekly, so a change in what HACS or Home Assistant ask of an integration is found out here first
+    # weekly, so a change in what Marketplace or Home Assistant ask of an integration is found out here first
     - cron: "17 5 * * 1"
   workflow_dispatch:
 
@@ -14,12 +16,14 @@ permissions:
   contents: read
 
 jobs:
-  hacs:
+  marketplace:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # nothing ignored, the brand check being met by the brand directory of the integration
-      - name: HACS validation
+      - name: Marketplace validation
         uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
         with:
           category: integration
@@ -27,17 +31,21 @@ jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Hassfest validation
-        uses: home-assistant/actions/hassfest@50baf3a307f87100cf550d4ae127746595030d5d
+        uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361
 
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
 
       - name: Install dependencies
         run: uv sync
@@ -60,25 +68,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # oldest supported, 6 months back, and the locked latest
+        # oldest supported (hacs.json), the last before Home Assistant's own pytest-homeassistant,
+        # and the locked release. Releases before 2026.11 are tested with pytest-homeassistant-custom-component
         include:
-          - ha-version: "2026.4"
-            ha-override: "2026.4.*"
+          - ha-version: "2026.5"
+            ha-override: "2026.5.*"
           - ha-version: "2026.10"
+            ha-override: "2026.10.*"
+          - ha-version: "2026.11"
 
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
 
       - name: Install dependencies
         run: uv sync
 
-      # the test harness has to move with it, as it is built against one HA release
+      # --no-config keeps the [tool.uv] settings in pyproject.toml out of this resolve. The test
+      # harness has to move with homeassistant, as it is built against one HA release: the locked
+      # pytest-homeassistant is swapped for pytest-homeassistant-custom-component, which serves
+      # releases before 2026.11 (see tests/ha_testing.py)
       - name: Pin Home Assistant ${{ matrix.ha-version }}
         if: matrix.ha-override
         run: |
+          uv pip uninstall pytest-homeassistant
           uv pip install --no-config "homeassistant==${{ matrix.ha-override }}" pytest-homeassistant-custom-component
           uv run --no-sync python -c "import homeassistant.const as c; v = c.__version__; print('Home Assistant', v); assert v.startswith('${{ matrix.ha-version }}.'), v"
 

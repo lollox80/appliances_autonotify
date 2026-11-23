@@ -36,7 +36,7 @@
             },
             "confirm": {
                 "title": "Notifications for {name}",
-                "description": "Get told when {name} starts and finishes?\n\n{supernotify}"
+                "description": "Get told when {name} starts and finishes?\n\n{supernotify}{beta}"
             }
         },
         "abort": {
@@ -102,16 +102,16 @@
                             "end_message": "Message",
                             "reminder": "Reminder",
                             "reminder_repeats": "Reminder repeats",
+                            "grace_period": "Wait on the dock",
                             "filament_price": "Filament price",
-                            "cooled_temperature": "Ready to take off below",
-                            "grace_period": "Wait on the dock"
+                            "cooled_temperature": "Ready to take off below"
                         },
                         "data_description": {
                             "reminder": "Minutes after which the end is sent again, until Finished is pressed on the notification. 0 for none. Remind Later on the notification waits this long, or 30 minutes.",
                             "reminder_repeats": "How many times the end is sent again",
+                            "grace_period": "Seconds a robot vacuum must stay on its dock, back from cleaning, before its cleaning is over, in case it sets off again. Raise it for one that goes back part way through to wash its mop or empty its bin. Where the vacuum reports its own progress, or whether it's cleaning, as Roborock does, that is followed instead, whatever this is.",
                             "filament_price": "The price of a kilo of filament. For a printer, {filament_placeholders} in the end message become the filament the print took, in grams and metres, and what it cost at this price.",
-                            "cooled_temperature": "Once a print has finished, a notification to the phones when the bed has cooled below this temperature, so the print comes off easily. 0 for none.",
-                            "grace_period": "Seconds a robot vacuum must stay on its dock, back from cleaning, before its cleaning is over, in case it sets off again. Raise it for one that goes back part way through to wash its mop or empty its bin. Where the vacuum reports its own progress, or whether it's cleaning, as Roborock does, that is followed instead, whatever this is."
+                            "cooled_temperature": "Once a print has finished, a notification to the phones when the bed has cooled below this temperature, so the print comes off easily. 0 for none."
                         }
                     },
                     "notify": {
@@ -246,6 +246,47 @@
                     "description": "How long to put it off"
                 }
             }
+        }
+    },
+    "issues": {
+        "beta_feedback": {
+            "title": "How did {name} do?",
+            "description": "{name} comes through {integration}, whose support in Appliance Auto Notify is new and was written without a real appliance to try it on. Its first cycle is over: did the start and end notifications, progress and time left come when they should?\n\nWhether it went well or not, please say so with *Learn more*, and attach the diagnostics of {name}, downloaded from its entry under *Appliance Auto Notify* in *Devices & services*. They hold what the appliance reported through its first cycles, which is how support gets right. Ignore this once done."
+        },
+        "appliance_removed": {
+            "title": "{name} has been removed",
+            "fix_flow": {
+                "step": {
+                    "confirm": {
+                        "title": "Remove {name}?",
+                        "description": "{name} is no longer in Home Assistant, as when it's removed from its own integration, so there's nothing left to watch. Remove it from Appliance Auto Notify too, with its device, the cycle kept through restarts and its maintenance counts.\n\nIf it's coming back, such as after re-adding its integration, ignore this instead: it's watched again once it's back, and this goes away by itself."
+                    }
+                }
+            }
+        },
+        "no_targets": {
+            "title": "Nowhere to send notifications",
+            "description": "{name} had a notification to send, but there's nowhere to send it: Supernotify isn't installed, no *Targets* are chosen in the appliance's settings, and no phone has the Home Assistant app set up for notifications.\n\nInstall the app on a phone and sign in, or choose notify entities under *Notification targets* in the appliance's settings. This goes away once a notification is sent."
+        }
+    },
+    "exceptions": {
+        "not_tracked": {
+            "message": "Maintenance isn't tracked for {entry_id}"
+        },
+        "no_item": {
+            "message": "No maintenance item {item} for {entry_id}"
+        },
+        "part_life_read": {
+            "message": "{item} is a part whose life is read, not counted in cycles"
+        },
+        "no_cycle_entity": {
+            "message": "No cycle state entity found for {name}"
+        },
+        "no_vacuum_entity": {
+            "message": "No vacuum entity found for {name}"
+        },
+        "appliance_removed": {
+            "message": "{name} has been removed from Home Assistant"
         }
     }
 }
