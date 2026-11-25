@@ -38,8 +38,8 @@ from .const import (
     CONF_FILAMENT_PRICE,
     CONF_GRACE_PERIOD,
     CONF_LIVE_COUNT,
-    CONF_LIVE_DETAIL,
-    CONF_LIVE_TITLE,
+    CONF_LIVE_SHOW,
+    CONF_LIVE_TIMER,
     CONF_MAINTENANCE,
     CONF_MAINTENANCE_PREFIX,
     CONF_MIN_DURATION,
@@ -48,6 +48,7 @@ from .const import (
     CONF_NOTIFY_PROBLEM,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
+    CONF_OFFLINE_AFTER,
     CONF_POWER_ENTITY,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
@@ -60,11 +61,9 @@ from .const import (
     CONF_TARGETS,
     CONF_THRESHOLD,
     COST_PLACEHOLDER,
-    DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_MIN_DURATION,
     DEFAULT_REMINDER_REPEATS,
-    DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
     DISCOVERY_TITLE,
@@ -76,24 +75,25 @@ from .const import (
     LIVE_COUNT_PERCENT,
     LIVE_COUNTS,
     LIVE_DEFAULTS,
-    LIVE_DETAILS,
-    LIVE_TITLES,
+    LIVE_SHOWS,
     MAINTENANCE_ITEMS,
     NAME_PLACEHOLDER,
+    NOTIFICATION_TEXTS,
     PROGRAM_PLACEHOLDER,
     START_TIME_PLACEHOLDER,
     SUPERNOTIFY_MISSING,
     SUPERNOTIFY_PRESENT,
+    TEXT_END,
+    TEXT_START,
     TYPE_DISCOVERY,
     TYPE_POWER,
     TYPE_VACUUM,
-    VACUUM_LIVE_DEFAULTS,
-    VACUUM_LIVE_DETAILS,
     VACUUM_SETTLE,
     WEIGHT_PLACEHOLDER,
 )
 from .dashboards import dashboards
 from .discovery import appliance_beta, appliance_profile, find_appliances, integration_name, plug_switch
+from .maintenance import translated
 from .platforms import profile_for
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .words import DATA_WORDS, async_load_words
@@ -107,7 +107,7 @@ SECTION_NOTIFY = "notify"
 SECTION_MAINTENANCE = "maintenance_items"
 
 # a switch or a choice left as it comes isn't a setting either
-DEFAULT_CHOICES: dict[str, bool | str] = {
+DEFAULT_CHOICES: dict[str, Any] = {
     CONF_NOTIFY_START: False,
     CONF_NOTIFY_END: True,
     CONF_NOTIFY_PROGRESS: False,
@@ -127,12 +127,16 @@ SHOWN_IF_RUNNING: tuple[str, ...] = (
     CONF_COOLED_TEMPERATURE,
 )
 
-DEFAULT_TEXTS: dict[str, str] = {
-    CONF_START_TITLE: DEFAULT_TITLE,
-    CONF_START_MESSAGE: DEFAULT_START_MESSAGE,
-    CONF_END_TITLE: DEFAULT_TITLE,
-    CONF_END_MESSAGE: DEFAULT_END_MESSAGE,
-}
+
+def default_texts(hass: HomeAssistant) -> dict[str, str]:
+    """The texts as they come, in the language of Home Assistant"""
+    texts = translated(hass, NOTIFICATION_TEXTS)
+    return {
+        CONF_START_TITLE: DEFAULT_TITLE,
+        CONF_START_MESSAGE: texts[TEXT_START],
+        CONF_END_TITLE: DEFAULT_TITLE,
+        CONF_END_MESSAGE: texts[TEXT_END],
+    }
 
 
 def supernotify_status(hass: HomeAssistant) -> str:
@@ -192,16 +196,20 @@ async def settings_schema(
                     options=list(LIVE_COUNTS), mode=SelectSelectorMode.DROPDOWN, translation_key=CONF_LIVE_COUNT
                 )
             )
+    # none unless chosen, since an appliance switched off at the wall is unavailable too
+    fields[vol.Required(CONF_OFFLINE_AFTER, default=0)] = NumberSelector(
+        NumberSelectorConfig(min=0, max=1440, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement=UnitOfTime.MINUTES)
+    )
     if live and supernotify_available(hass):
-        # only a Live Activity has a title that changes as the cycle goes on, and a timer, which a vacuum hasn't
-        defaults = VACUUM_LIVE_DEFAULTS if vacuum else LIVE_DEFAULTS
-        for key, options in (
-            (CONF_LIVE_TITLE, LIVE_TITLES),
-            (CONF_LIVE_DETAIL, VACUUM_LIVE_DETAILS if vacuum else LIVE_DETAILS),
-        ):
-            fields[vol.Required(key, default=defaults[key])] = SelectSelector(
-                SelectSelectorConfig(options=list(options), mode=SelectSelectorMode.DROPDOWN, translation_key=key)
+        # only a Live Activity shows what the appliance is doing as the cycle goes on, and has a timer, which a
+        # vacuum hasn't
+        if not vacuum:
+            fields[vol.Required(CONF_LIVE_TIMER, default=LIVE_DEFAULTS[CONF_LIVE_TIMER])] = BooleanSelector()
+        fields[vol.Required(CONF_LIVE_SHOW, default=LIVE_DEFAULTS[CONF_LIVE_SHOW])] = SelectSelector(
+            SelectSelectorConfig(
+                options=list(LIVE_SHOWS), multiple=True, mode=SelectSelectorMode.LIST, translation_key=CONF_LIVE_SHOW
             )
+        )
     notify: dict[vol.Marker, Any] = {}
     end: dict[vol.Marker, Any] = {
         vol.Optional(CONF_END_TITLE): TextSelector(),
@@ -315,7 +323,7 @@ class AppliancesConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
     # 2 has the choice of what the title of a Live Activity names in place of the switch for the program in it
     # 3 has a dashboard looked for as an appliance is first set up
-    MINOR_VERSION = 3
+    MINOR_VERSION = 4
 
     def __init__(self) -> None:
         self._device_id: str | None = None
@@ -467,7 +475,7 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
         kind = self.config_entry.data.get(CONF_TYPE)
         vacuum = kind == TYPE_VACUUM
         # as they'll be sent, so there's the real text to edit rather than a template or an empty box
-        defaults = {key: text.replace(NAME_PLACEHOLDER, name) for key, text in DEFAULT_TEXTS.items()}
+        defaults = {key: text.replace(NAME_PLACEHOLDER, name) for key, text in default_texts(self.hass).items()}
         if user_input is not None:
             # text left as the default isn't a setting, so it goes on following the name of the appliance
             usual = {f"{CONF_MAINTENANCE_PREFIX}{key}": every for key, every in (self._maintenance() or {}).items()}
@@ -475,7 +483,6 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 defaults
                 | DEFAULT_CHOICES
                 | usual
-                | (VACUUM_LIVE_DEFAULTS if vacuum else {})
                 | {
                     CONF_NOTIFY_PHASE: self._phase_default(),
                     CONF_REMINDER_REPEATS: DEFAULT_REMINDER_REPEATS,
@@ -486,11 +493,16 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
             # hasn't been asked
             if self.config_entry.options.get(CONF_MAINTENANCE) is None:
                 unset[CONF_MAINTENANCE] = False
+            chosen = flattened(user_input)
+            if CONF_LIVE_SHOW in chosen:
+                # in the order they're shown, so as ticked is the same whatever order they were ticked in
+                chosen[CONF_LIVE_SHOW] = [show for show in LIVE_SHOWS if show in chosen[CONF_LIVE_SHOW]]
             settings = {
                 key: value
-                for key, value in flattened(user_input).items()
-                # an item at 0 is one left out, not one left as it comes
-                if (value or value is False or (key in usual and value == 0)) and value != unset.get(key)
+                for key, value in chosen.items()
+                # an item at 0 is one left out, not one left as it comes, and nothing ticked is nothing shown
+                if (value or value is False or (key == CONF_LIVE_SHOW and value == []) or (key in usual and value == 0))
+                and value != unset.get(key)
             }
             settings = {
                 key: self.config_entry.options[key]
@@ -539,8 +551,8 @@ class AppliancesOptionsFlow(OptionsFlowWithReload):
                 "supernotify": supernotify_status(self.hass),
                 # as it's to be typed, which a translation can't say for itself
                 "program_placeholder": PROGRAM_PLACEHOLDER,
-                "totals_placeholders": f"{DURATION_PLACEHOLDER}, {ENERGY_PLACEHOLDER}, {COST_PLACEHOLDER}",
                 "start_time_placeholder": START_TIME_PLACEHOLDER,
+                "totals_placeholders": f"{DURATION_PLACEHOLDER}, {ENERGY_PLACEHOLDER}, {COST_PLACEHOLDER}",
                 "filament_placeholders": f"{WEIGHT_PLACEHOLDER}, {LENGTH_PLACEHOLDER}, {FILAMENT_COST_PLACEHOLDER}",
             },
         )

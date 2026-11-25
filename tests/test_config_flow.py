@@ -222,6 +222,26 @@ async def test_power_flow(hass: HomeAssistant) -> None:
     assert entry.runtime_data.switch_entity_id is None
 
 
+async def test_settings_text_as_it_comes_in_the_language_of_home_assistant(hass: HomeAssistant) -> None:
+    hass.config.language = "de"
+    hass.states.async_set("sensor.washer_power", "0", {"unit_of_measurement": "W"})
+    power = {"power_entity": "sensor.washer_power", "threshold": 5, "grace_period": 60, "min_duration": 60}
+    entry = MockConfigEntry(domain=DOMAIN, title="Waschmaschine", data={"type": "power"}, options=power)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert suggested(result)["start_message"] == "Waschmaschine gestartet"
+    assert suggested(result)["end_message"] == "Waschmaschine ist fertig"
+    # left as it comes, so not a setting
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"start": {}, "end": {"end_message": "Waschmaschine ist fertig"}, "notify": {}}
+    )
+    result = await hass.config_entries.options.async_configure(result["flow_id"], power)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert "end_message" not in entry.options
+
+
 def add_power_monitor(
     hass: HomeAssistant,
     name: str,
@@ -371,15 +391,15 @@ async def test_settings_without_supernotify(hass: HomeAssistant) -> None:
         "name": "Dishwasher",
         "supernotify": SUPERNOTIFY_MISSING,
         "program_placeholder": "{program}",
+        "start_time_placeholder": "{start_time}",
         "totals_placeholders": "{duration}, {energy}, {cost}",
         "filament_placeholders": "{weight}, {length}, {filament_cost}",
-        "start_time_placeholder": "{start_time}",
     }
     # with no Live Activity, there's no title for the program to go in
-    assert not {"live_title", "live_detail"} & {str(k) for k in schema(result)}
+    assert not {"live_timer", "live_show"} & {str(k) for k in schema(result)}
     # everything but whether to notify progress is tucked away in three sections
     sections = {str(k): v for k, v in schema(result).items()}
-    for switch in ("notify_start", "notify_end", "maintenance", "notify_progress"):
+    for switch in ("notify_start", "notify_end", "maintenance", "notify_progress", "offline_after"):
         assert sections.pop(switch) is not None
     assert list(sections) == ["start", "end", "notify", "maintenance_items"]
     assert all(s.options == {"collapsed": True} for s in sections.values())
@@ -436,8 +456,9 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
         "notify_end",
         "maintenance",
         "notify_progress",
-        "live_title",
-        "live_detail",
+        "offline_after",
+        "live_timer",
+        "live_show",
         "start",
         "end",
         "notify",
@@ -449,8 +470,10 @@ async def test_settings_with_supernotify(hass: HomeAssistant) -> None:
         "notify_end": True,
         "maintenance": False,
         "notify_progress": False,
-        "live_title": "name_program",
-        "live_detail": "time_remaining",
+        # not told of as offline unless chosen
+        "offline_after": 0,
+        "live_timer": True,
+        "live_show": ["program", "phase", "state"],
     }
     notify = next(v for k, v in schema(result).items() if k == "notify").schema.schema
     # the notify entity list is only for use without Supernotify

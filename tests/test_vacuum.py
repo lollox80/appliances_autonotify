@@ -30,11 +30,6 @@ if TYPE_CHECKING:
 ICON = "mdi:robot-vacuum"
 
 
-def told(calls: list[ServiceCall]) -> list[ServiceCall]:
-    """The notifications, leaving out the silent updates of the Live Activity as the vacuum goes about its cleaning"""
-    return [call for call in calls if call.data["message"] not in ("cleaning", "paused", "returning")]
-
-
 def add_vacuum(hass: HomeAssistant, name: str = "Bruno", platform: str = "roborock") -> tuple[str, str]:
     """Register a robot vacuum as any vendor integration would, returning its device and vacuum entity"""
     source = MockConfigEntry(domain=platform)
@@ -123,6 +118,20 @@ async def test_vacuum_offered_keeps_its_type(hass: HomeAssistant) -> None:
     assert result["data"] == {"device_id": device_id, "type": "vacuum"}
 
 
+def told(calls: list[ServiceCall]) -> list[ServiceCall]:
+    """What was notified, leaving out the quiet updates of the Live Activity as the vacuum pauses or heads back"""
+    told: list[ServiceCall] = []
+    after_state = False
+    for call in calls:
+        quiet = bool(call.data.get("extra_data", {}).get("silent"))
+        state = quiet and call.data["message"] in ("paused", "returning")
+        # carrying on after one is told of quietly too
+        if not state and not (quiet and after_state):
+            told.append(call)
+        after_state = state
+    return told
+
+
 async def test_vacuum_cleaning_is_a_cycle(hass: HomeAssistant) -> None:
     device_id, vacuum = add_vacuum(hass)
     calls = mock_supernotify(hass)
@@ -149,6 +158,8 @@ async def test_vacuum_cleaning_is_a_cycle(hass: HomeAssistant) -> None:
     assert len(told(calls)) == 1
     await pass_time(hass, VACUUM_SETTLE)
     assert len(told(calls)) == 3
+    # the Live Activity told quietly as it paused, carried on and headed back, with what it's doing
+    assert [call.data["message"] for call in calls[1:4]] == ["paused", "cleaning", "returning"]
     assert told(calls)[1].data["extra_data"] == {"mobile_push_notification_tag": tag, "mobile_push_clear_notification": True}
     assert told(calls)[2].data == ended("Bruno", entry.entry_id, ICON, force_resend=True)
 
@@ -979,26 +990,50 @@ async def test_vacuum_progress_back_from_unavailable_on_its_way_home(
 
 
 @pytest.mark.parametrize(
-    ("detail", "title", "message"),
+    ("show", "title", "message"),
     [
-        ("status", "Bruno · vac_and_mop", "sweeping"),
-        # with the mode in the message there's no need for it in the title too
-        ("program_status", "Bruno", "vac_and_mop · sweeping"),
-        ("program", "Bruno", "vac_and_mop"),
+        # with no timer the title is the name, and the message says it all
+        (None, "Bruno", "vac_and_mop · sweeping"),
+        (["phase"], "Bruno", "sweeping"),
+        (["program"], "Bruno", "vac_and_mop"),
     ],
 )
-async def test_vacuum_title_can_have_its_cleaning_mode(hass: HomeAssistant, detail: str, title: str, message: str) -> None:
+async def test_vacuum_shows_what_is_chosen(hass: HomeAssistant, show: list[str] | None, title: str, message: str) -> None:
     device_id, vacuum, status, _, _ = add_roborock(hass)
     calls = mock_supernotify(hass)
-    await setup_vacuum(hass, device_id, live_title="name_program", live_detail=detail)
+    await setup_vacuum(hass, device_id, **({} if show is None else {"live_show": show}))
 
     await set_state(hass, status, "sweeping")
     await set_state(hass, vacuum, "cleaning")
     assert (calls[-1].data["title"], calls[-1].data["message"]) == (title, message)
 
 
+async def test_vacuum_returning_is_shown(hass: HomeAssistant) -> None:
+    """On its way back to its dock, which is a while for some, said though it has no status of its own"""
+    device_id, vacuum = add_vacuum(hass)
+    calls = mock_supernotify(hass)
+    hass.states.async_set(vacuum, "docked")
+    await setup_vacuum(hass, device_id)
+
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, vacuum, "returning")
+    assert calls[-1].data["message"] == "returning"
+
+
+async def test_vacuum_returning_said_once(hass: HomeAssistant) -> None:
+    """With a status saying the same as it heads back, said once"""
+    device_id, vacuum, status, _, _ = add_roborock(hass)
+    calls = mock_supernotify(hass)
+    await setup_vacuum(hass, device_id)
+    await set_state(hass, status, "sweeping")
+    await set_state(hass, vacuum, "cleaning")
+    await set_state(hass, status, "returning_home")
+    await set_state(hass, vacuum, "returning")
+    assert calls[-1].data["message"] == "vac_and_mop · returning_home"
+
+
 async def test_vacuum_live_activity_settings(hass: HomeAssistant) -> None:
-    """A vacuum has no time left to show, and its own choices unless chosen otherwise, which aren't kept as settings"""
+    """A vacuum has no time left to show, so no timer to choose, and what's shown left as it comes isn't a setting"""
     device_id, _, _, _, _ = add_roborock(hass)
     mock_supernotify(hass)
     entry = await setup_vacuum(hass, device_id)
@@ -1007,19 +1042,19 @@ async def test_vacuum_live_activity_settings(hass: HomeAssistant) -> None:
     assert result["data_schema"] is not None
     fields = {str(k): k for k in schema(result)}
     assert "notify_progress" not in fields
-    assert (fields["live_title"].default(), fields["live_detail"].default()) == ("name", "program_status")
-    detail = schema(result)[fields["live_detail"]]
-    assert detail.config["options"] == ["program_status", "status", "program"]
+    assert "live_timer" not in fields
+    assert fields["live_show"].default() == ["program", "phase", "state"]
 
     form: dict[str, object] = {"start": {}, "end": {}, "notify": {}}
-    await hass.config_entries.options.async_configure(
-        result["flow_id"], form | {"live_title": "name", "live_detail": "program_status"}
-    )
+    await hass.config_entries.options.async_configure(result["flow_id"], form | {"live_show": ["state", "phase", "program"]})
     await hass.async_block_till_done()
     assert entry.options == {}
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    await hass.config_entries.options.async_configure(
-        result["flow_id"], form | {"live_title": "name_program", "live_detail": "status"}
-    )
+    await hass.config_entries.options.async_configure(result["flow_id"], form | {"live_show": ["state", "phase"]})
     await hass.async_block_till_done()
-    assert entry.options == {"live_title": "name_program", "live_detail": "status"}
+    assert entry.options == {"live_show": ["phase", "state"]}
+    # and nothing ticked is nothing shown
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(result["flow_id"], form | {"live_show": []})
+    await hass.async_block_till_done()
+    assert entry.options == {"live_show": []}

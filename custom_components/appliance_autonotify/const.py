@@ -1,6 +1,6 @@
 """Constants for Appliance Auto Notify"""
 
-from typing import Final
+from typing import Any, Final
 
 DOMAIN: Final[str] = "appliance_autonotify"
 SUPERNOTIFY_DOMAIN: Final[str] = "supernotify"
@@ -22,31 +22,24 @@ CONF_NOTIFY_START: Final[str] = "notify_start"
 CONF_NOTIFY_END: Final[str] = "notify_end"
 # whether the end of a phase, such as an oven getting up to heat, is told with an ordinary notification
 CONF_NOTIFY_PHASE: Final[str] = "notify_phase"
-# what the title of a Live Activity names, the program going beside the name unless chosen otherwise, since it's
-# where the program shows on the iOS Lock Screen once a timer has taken the message's place
+# whether a Live Activity counts down the time left, where the appliance reports when it will finish, which on an
+# iPhone's Lock Screen takes the place of the message, so that what's shown goes in the title instead
+CONF_LIVE_TIMER: Final[str] = "live_timer"
+# what a Live Activity shows of what the appliance is doing, each where the appliance reports it: its program, the
+# phase of the cycle it's in, such as a pre-rinse or a robot vacuum returning to its dock, and its state where that
+# says more than that it's running, such as paused or waiting for something to be done
+CONF_LIVE_SHOW: Final[str] = "live_show"
+LIVE_SHOW_PROGRAM: Final[str] = "program"
+LIVE_SHOW_PHASE: Final[str] = "phase"
+LIVE_SHOW_STATE: Final[str] = "state"
+LIVE_SHOWS: Final[tuple[str, ...]] = (LIVE_SHOW_PROGRAM, LIVE_SHOW_PHASE, LIVE_SHOW_STATE)
+LIVE_DEFAULTS: Final[dict[str, Any]] = {CONF_LIVE_TIMER: True, CONF_LIVE_SHOW: list(LIVE_SHOWS)}
+# the choices these took over from, the title and what was shown in place of the time left
 CONF_LIVE_TITLE: Final[str] = "live_title"
-LIVE_TITLE_NAME_PROGRAM: Final[str] = "name_program"
-LIVE_TITLE_PROGRAM: Final[str] = "program"
-LIVE_TITLE_NAME: Final[str] = "name"
-LIVE_TITLES: Final[tuple[str, ...]] = (LIVE_TITLE_NAME_PROGRAM, LIVE_TITLE_PROGRAM, LIVE_TITLE_NAME)
-# what a Live Activity shows in place of its message, the time left where the appliance reports a finish time, or
-# the program, for an appliance whose program is always the same and so not worth the title, or its status, what it's
-# doing within its cycle, or both of those
 CONF_LIVE_DETAIL: Final[str] = "live_detail"
-LIVE_DETAIL_TIME: Final[str] = "time_remaining"
-LIVE_DETAIL_PROGRAM: Final[str] = "program"
-LIVE_DETAIL_STATUS: Final[str] = "status"
-LIVE_DETAIL_PROGRAM_STATUS: Final[str] = "program_status"
-LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_TIME, LIVE_DETAIL_PROGRAM, LIVE_DETAIL_STATUS, LIVE_DETAIL_PROGRAM_STATUS)
-# a robot vacuum has no time left to show
-VACUUM_LIVE_DETAILS: Final[tuple[str, ...]] = (LIVE_DETAIL_PROGRAM_STATUS, LIVE_DETAIL_STATUS, LIVE_DETAIL_PROGRAM)
-# the title and what's shown unless chosen otherwise, a vacuum with no timer saying both its cleaning mode and what
-# it's doing in its message, so needing no more than its name for a title
-LIVE_DEFAULTS: Final[dict[str, str]] = {CONF_LIVE_TITLE: LIVE_TITLE_NAME_PROGRAM, CONF_LIVE_DETAIL: LIVE_DETAIL_TIME}
-VACUUM_LIVE_DEFAULTS: Final[dict[str, str]] = {
-    CONF_LIVE_TITLE: LIVE_TITLE_NAME,
-    CONF_LIVE_DETAIL: LIVE_DETAIL_PROGRAM_STATUS,
-}
+# the longest title with all that's shown in it, past which the program and then the phase are left out, the
+# state being the least often there and the most worth knowing when it is
+LIVE_TITLE_ROOM: Final[int] = 40
 # how a Live Activity counts how far along it is, by percentage, or for a 3D printer by layer
 CONF_LIVE_COUNT: Final[str] = "live_count"
 LIVE_COUNT_PERCENT: Final[str] = "percent"
@@ -94,12 +87,12 @@ DISCOVERY_TITLE: Final[str] = "Automatic discovery"
 NAME_PLACEHOLDER: Final[str] = "{name}"
 # the program under way, as Home Assistant shows it, and nothing at all for an appliance that reports none
 PROGRAM_PLACEHOLDER: Final[str] = "{program}"
+# the time of day the cycle began, as it runs and once it's over
+START_TIME_PLACEHOLDER: Final[str] = "{start_time}"
 # what the cycle came to, as it ends, and nothing at all where that isn't known
 DURATION_PLACEHOLDER: Final[str] = "{duration}"
 ENERGY_PLACEHOLDER: Final[str] = "{energy}"
 COST_PLACEHOLDER: Final[str] = "{cost}"
-# the time of day the cycle began, as it runs and once it's over
-START_TIME_PLACEHOLDER: Final[str] = "{start_time}"
 # the filament a print took, and what it cost at the price per kilo chosen
 WEIGHT_PLACEHOLDER: Final[str] = "{weight}"
 LENGTH_PLACEHOLDER: Final[str] = "{length}"
@@ -115,10 +108,123 @@ COOLED_MESSAGES: Final[dict[str, str]] = {
     "it": "Piatto sceso a {temperature}, la stampa si può staccare",
 }
 DEFAULT_TITLE: Final[str] = "{name}"
-DEFAULT_START_MESSAGE: Final[str] = "{name} started"
-DEFAULT_END_MESSAGE: Final[str] = "{name} is finished"
-PROGRESS_MESSAGE: Final[str] = "{progress}% complete"
+# the texts of notifications, by the language of Home Assistant as for the buttons, English for any other, worded
+# so as not to depend on whether the appliance's name is masculine or feminine
+TEXT_START: Final[str] = "start"
+TEXT_END: Final[str] = "end"
+TEXT_PROGRESS: Final[str] = "progress"
+TEXT_PREHEAT: Final[str] = "preheat"
+TEXT_FAST_PREHEAT: Final[str] = "fast_preheat"
+TEXT_PREHEATING: Final[str] = "preheating"
+TEXT_PREHEATED: Final[str] = "preheated"
+# the appliance unavailable for longer than chosen, since when, and back, after how long
+TEXT_OFFLINE: Final[str] = "offline"
+TEXT_ONLINE: Final[str] = "online"
+NOTIFICATION_TEXTS: Final[dict[str, dict[str, str]]] = {
+    "en": {
+        TEXT_START: "{name} started",
+        TEXT_END: "{name} is finished",
+        TEXT_PROGRESS: "{progress}% complete",
+        TEXT_PREHEAT: "Pre-heating",
+        TEXT_FAST_PREHEAT: "Fast pre-heat",
+        TEXT_PREHEATING: "{phase}, {current} of {target}{unit}",
+        TEXT_PREHEATED: "{name} is pre-heated",
+        TEXT_OFFLINE: "{name} is offline since {since}",
+        TEXT_ONLINE: "{name} is back online after {duration}",
+    },
+    "it": {
+        TEXT_START: "{name}: ciclo avviato",
+        TEXT_END: "{name}: ciclo terminato",
+        TEXT_PROGRESS: "{progress}% completato",
+        TEXT_PREHEAT: "Preriscaldamento",
+        TEXT_FAST_PREHEAT: "Preriscaldamento rapido",
+        TEXT_PREHEATING: "{phase}, {current} di {target}{unit}",
+        TEXT_PREHEATED: "{name}: preriscaldamento completato",
+        TEXT_OFFLINE: "{name}: offline dalle {since}",
+        TEXT_ONLINE: "{name}: di nuovo online dopo {duration}",
+    },
+    "de": {
+        TEXT_START: "{name} gestartet",
+        TEXT_END: "{name} ist fertig",
+        TEXT_PROGRESS: "{progress} % erledigt",
+        TEXT_PREHEAT: "Vorheizen",
+        TEXT_FAST_PREHEAT: "Schnellaufheizen",
+        TEXT_PREHEATING: "{phase}, {current} von {target}{unit}",
+        TEXT_PREHEATED: "{name} ist vorgeheizt",
+        TEXT_OFFLINE: "{name} ist seit {since} offline",
+        TEXT_ONLINE: "{name} ist nach {duration} wieder online",
+    },
+    "nl": {
+        TEXT_START: "{name} gestart",
+        TEXT_END: "{name} is klaar",
+        TEXT_PROGRESS: "{progress}% voltooid",
+        TEXT_PREHEAT: "Voorverwarmen",
+        TEXT_FAST_PREHEAT: "Snel voorverwarmen",
+        TEXT_PREHEATING: "{phase}, {current} van {target}{unit}",
+        TEXT_PREHEATED: "{name} is voorverwarmd",
+        TEXT_OFFLINE: "{name} is offline sinds {since}",
+        TEXT_ONLINE: "{name} is na {duration} weer online",
+    },
+    "es": {
+        TEXT_START: "{name}: ciclo iniciado",
+        TEXT_END: "{name}: ciclo terminado",
+        TEXT_PROGRESS: "{progress} % completado",
+        TEXT_PREHEAT: "Precalentando",
+        TEXT_FAST_PREHEAT: "Precalentamiento rápido",
+        TEXT_PREHEATING: "{phase}, {current} de {target}{unit}",
+        TEXT_PREHEATED: "{name}: precalentamiento completado",
+        TEXT_OFFLINE: "{name}: sin conexión desde las {since}",
+        TEXT_ONLINE: "{name}: conexión restablecida tras {duration}",
+    },
+    "fr": {
+        TEXT_START: "{name} : cycle démarré",
+        TEXT_END: "{name} : cycle terminé",
+        TEXT_PROGRESS: "{progress} % terminé",
+        TEXT_PREHEAT: "Préchauffage",
+        TEXT_FAST_PREHEAT: "Préchauffage rapide",
+        TEXT_PREHEATING: "{phase}, {current} sur {target}{unit}",
+        TEXT_PREHEATED: "{name} : préchauffage terminé",
+        TEXT_OFFLINE: "{name} : hors ligne depuis {since}",
+        TEXT_ONLINE: "{name} : de nouveau en ligne après {duration}",
+    },
+    "pl": {
+        TEXT_START: "{name}: cykl rozpoczęty",
+        TEXT_END: "{name}: cykl zakończony",
+        TEXT_PROGRESS: "Ukończono {progress}%",
+        TEXT_PREHEAT: "Nagrzewanie",
+        TEXT_FAST_PREHEAT: "Szybkie nagrzewanie",
+        TEXT_PREHEATING: "{phase}, {current} z {target}{unit}",
+        TEXT_PREHEATED: "{name}: nagrzewanie zakończone",
+        TEXT_OFFLINE: "{name}: offline od {since}",
+        TEXT_ONLINE: "{name}: znów online po {duration}",
+    },
+    "zh": {
+        TEXT_START: "{name} 已启动",
+        TEXT_END: "{name} 已完成",
+        TEXT_PROGRESS: "已完成 {progress}%",
+        TEXT_PREHEAT: "预热中",
+        TEXT_FAST_PREHEAT: "快速预热",
+        TEXT_PREHEATING: "{phase}，{current}/{target}{unit}",
+        TEXT_PREHEATED: "{name} 已预热",
+        TEXT_OFFLINE: "{name} 自 {since} 起离线",
+        TEXT_ONLINE: "{name} 离线 {duration} 后已恢复在线",
+    },
+    "hi": {
+        TEXT_START: "{name} शुरू हो गया",
+        TEXT_END: "{name} पूरा हो गया",
+        TEXT_PROGRESS: "{progress}% पूरा",
+        TEXT_PREHEAT: "प्रीहीटिंग",
+        TEXT_FAST_PREHEAT: "तेज़ प्रीहीट",
+        TEXT_PREHEATING: "{phase}, {target}{unit} में से {current}",
+        TEXT_PREHEATED: "{name} प्रीहीट हो गया",
+        TEXT_OFFLINE: "{name} {since} से ऑफ़लाइन है",
+        TEXT_ONLINE: "{name} {duration} बाद फिर से ऑनलाइन है",
+    },
+}
 
+# minutes an appliance must be unavailable, as when its integration can't reach it, before it's told of as offline,
+# and then again as it's back, none unless chosen, since one switched off at the wall is offline too
+CONF_OFFLINE_AFTER: Final[str] = "offline_after"
 # minutes after which the end is told again, for as long as nobody says the appliance has been seen to
 CONF_REMINDER: Final[str] = "reminder"
 # how many times it's told again
@@ -378,10 +484,6 @@ MAINTENANCE_MESSAGES: Final[dict[str, dict[str, str]]] = {
 
 # the text of the Android status bar chip, which shows it in full only up to about 7 characters
 PROGRESS_CHIP: Final[str] = "{progress}%"
-PREHEAT_PHASE: Final[str] = "Pre-heating"
-FAST_PREHEAT_PHASE: Final[str] = "Fast pre-heat"
-PREHEAT_MESSAGE: Final[str] = "{phase}, {current} of {target}{unit}"
-PREHEATED_MESSAGE: Final[str] = "{name} is pre-heated"
 # a robot vacuum that has stopped where it is, stuck or lifted, and won't go on by itself, by the language of Home
 # Assistant as for the buttons, English for any other
 STUCK_MESSAGES: Final[dict[str, str]] = {
@@ -415,8 +517,40 @@ PROBLEM_SETTLE: Final[float] = 5
 LAYER_REFRESH: Final[float] = 60
 # the title of a Live Activity with a timer, which iOS shows on the Lock Screen in place of the message
 LIVE_TITLE: Final[str] = "{title} · {phase}"
-# the program and the status together, as the Live Activity shows them
-LIVE_PROGRAM_STATUS: Final[str] = "{program} · {status}"
+# how long a cycle ran, in hours and minutes, by the language of Home Assistant as for the buttons, English for any
+# other
+DURATION_HOURS_MINUTES: Final[str] = "hours_minutes"
+DURATION_HOURS: Final[str] = "hours"
+DURATION_MINUTES: Final[str] = "minutes"
+DURATION_FORMATS: Final[dict[str, dict[str, str]]] = {
+    "en": {DURATION_HOURS_MINUTES: "{hours} h {minutes} min", DURATION_HOURS: "{hours} h", DURATION_MINUTES: "{minutes} min"},
+    "it": {DURATION_HOURS_MINUTES: "{hours} h {minutes} min", DURATION_HOURS: "{hours} h", DURATION_MINUTES: "{minutes} min"},
+    "de": {
+        DURATION_HOURS_MINUTES: "{hours} Std. {minutes} Min.",
+        DURATION_HOURS: "{hours} Std.",
+        DURATION_MINUTES: "{minutes} Min.",
+    },
+    "nl": {DURATION_HOURS_MINUTES: "{hours} u {minutes} min", DURATION_HOURS: "{hours} u", DURATION_MINUTES: "{minutes} min"},
+    "es": {DURATION_HOURS_MINUTES: "{hours} h {minutes} min", DURATION_HOURS: "{hours} h", DURATION_MINUTES: "{minutes} min"},
+    "fr": {DURATION_HOURS_MINUTES: "{hours} h {minutes} min", DURATION_HOURS: "{hours} h", DURATION_MINUTES: "{minutes} min"},
+    "pl": {
+        DURATION_HOURS_MINUTES: "{hours} godz. {minutes} min",
+        DURATION_HOURS: "{hours} godz.",
+        DURATION_MINUTES: "{minutes} min",
+    },
+    "zh": {
+        DURATION_HOURS_MINUTES: "{hours}小时{minutes}分钟",
+        DURATION_HOURS: "{hours}小时",
+        DURATION_MINUTES: "{minutes}分钟",
+    },
+    "hi": {
+        DURATION_HOURS_MINUTES: "{hours} घंटे {minutes} मिनट",
+        DURATION_HOURS: "{hours} घंटे",
+        DURATION_MINUTES: "{minutes} मिनट",
+    },
+}
+# between each of the things shown, in the title or the message
+LIVE_SEPARATOR: Final[str] = " · "
 # what an oven up to heat is doing, and how hot it is
 OVEN_MESSAGE: Final[str] = "{program}, {current}{unit}"
 SUPERNOTIFY_PRESENT: Final[str] = "Supernotify is installed, so mobile apps will show a Live Activity for each cycle."

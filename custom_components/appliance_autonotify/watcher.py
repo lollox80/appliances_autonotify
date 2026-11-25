@@ -61,8 +61,8 @@ from .const import (
     CONF_FILAMENT_PRICE,
     CONF_GRACE_PERIOD,
     CONF_LIVE_COUNT,
-    CONF_LIVE_DETAIL,
-    CONF_LIVE_TITLE,
+    CONF_LIVE_SHOW,
+    CONF_LIVE_TIMER,
     CONF_MAINTENANCE,
     CONF_MIN_DURATION,
     CONF_NOTIFY_END,
@@ -70,6 +70,7 @@ from .const import (
     CONF_NOTIFY_PROBLEM,
     CONF_NOTIFY_PROGRESS,
     CONF_NOTIFY_START,
+    CONF_OFFLINE_AFTER,
     CONF_POWER_ENTITY,
     CONF_REMINDER,
     CONF_REMINDER_REPEATS,
@@ -90,13 +91,11 @@ from .const import (
     CYCLE_SETTLE,
     CYCLE_STORE,
     CYCLE_STORE_VERSION,
-    DEFAULT_END_MESSAGE,
     DEFAULT_GRACE_PERIOD,
     DEFAULT_ICON,
     DEFAULT_MIN_DURATION,
     DEFAULT_REMINDER_REPEATS,
     DEFAULT_SNOOZE,
-    DEFAULT_START_MESSAGE,
     DEFAULT_THRESHOLD,
     DEFAULT_TITLE,
     DOMAIN,
@@ -106,7 +105,6 @@ from .const import (
     ENTITY_DOMAINS,
     FAILED_MESSAGES,
     FAST_PREHEAT_KEY,
-    FAST_PREHEAT_PHASE,
     FAULT_SEVERITY_ATTRIBUTE,
     FAULT_TEXT_ATTRIBUTE,
     FAULTS_KEY,
@@ -124,30 +122,27 @@ from .const import (
     LIVE_COUNT_LAYERS,
     LIVE_COUNT_PERCENT,
     LIVE_DEFAULTS,
-    LIVE_DETAIL_PROGRAM,
-    LIVE_DETAIL_PROGRAM_STATUS,
-    LIVE_DETAIL_TIME,
-    LIVE_PROGRAM_STATUS,
+    LIVE_SEPARATOR,
     LIVE_SETTLE,
+    LIVE_SHOW_PHASE,
+    LIVE_SHOW_PROGRAM,
+    LIVE_SHOW_STATE,
     LIVE_TIMEOUT_MARGIN,
     LIVE_TITLE,
-    LIVE_TITLE_NAME,
-    LIVE_TITLE_PROGRAM,
+    LIVE_TITLE_ROOM,
     MAINTENANCE_ACTION_TITLES,
     MOBILE_ACTION_EVENT,
     MOBILE_APP_PLATFORM,
     MOBILE_PUSH_TRANSPORT,
     NAME_PLACEHOLDER,
+    NOTIFICATION_TEXTS,
     OVEN_MESSAGE,
     PAUSE_KEY,
     PAUSED_MESSAGES,
     PHASES_NOTIFIED,
     PLATFORM_TYPES,
     PREHEAT_FINISHED_KEYS,
-    PREHEAT_MESSAGE,
-    PREHEAT_PHASE,
     PREHEAT_SETTLE,
-    PREHEATED_MESSAGE,
     PROBLEM_KEY,
     PROBLEM_SETTLE,
     PROBLEM_TEXT_ATTRIBUTE,
@@ -157,7 +152,6 @@ from .const import (
     PROGRESS_FINAL,
     PROGRESS_FINAL_STEP,
     PROGRESS_KEY,
-    PROGRESS_MESSAGE,
     PROGRESS_NOTIFY_STEP,
     PROGRESS_STEP,
     PROGRESS_TICK,
@@ -179,6 +173,15 @@ from .const import (
     SUPERNOTIFY_DOMAIN,
     TARGET_TEMPERATURE_KEY,
     TEMPERATURE_STEP,
+    TEXT_END,
+    TEXT_FAST_PREHEAT,
+    TEXT_OFFLINE,
+    TEXT_ONLINE,
+    TEXT_PREHEAT,
+    TEXT_PREHEATED,
+    TEXT_PREHEATING,
+    TEXT_PROGRESS,
+    TEXT_START,
     TOTAL_TIME_KEY,
     TYPE_DISCOVERY,
     TYPE_ICONS,
@@ -194,7 +197,6 @@ from .const import (
     VACUUM_HELD_KIND,
     VACUUM_HELD_SETTLE,
     VACUUM_JOB_LEAD,
-    VACUUM_LIVE_DEFAULTS,
     VACUUM_MIDWAY_KIND,
     VACUUM_MIDWAY_SETTLE,
     VACUUM_PAUSE_REMIND,
@@ -216,6 +218,7 @@ from .repairs import async_forget_no_targets, async_report_no_targets
 from .supernotify_api import deliveries_by_transport, supernotify_available
 from .totals import (
     CycleTotals,
+    counts_program,
     energy_entity_id,
     energy_price,
     energy_reading,
@@ -233,7 +236,7 @@ from .trace import CycleTrace, async_ask_feedback
 from .words import name_type
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Coroutine, Mapping
     from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
@@ -293,8 +296,6 @@ def _seconds_to(due: datetime) -> float:
 class ApplianceWatcher:
     """The notifications of a cycle, for subclasses that know when one starts and ends"""
 
-    live_defaults: dict[str, str] = LIVE_DEFAULTS
-
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
@@ -314,8 +315,10 @@ class ApplianceWatcher:
         self.notify_start: bool = entry.options.get(CONF_NOTIFY_START, False)
         self.notify_end: bool = entry.options.get(CONF_NOTIFY_END, True)
         self.notify_progress: bool = entry.options.get(CONF_NOTIFY_PROGRESS, False)
-        self.live_title: str = entry.options.get(CONF_LIVE_TITLE, self.live_defaults[CONF_LIVE_TITLE])
-        self.live_detail: str = entry.options.get(CONF_LIVE_DETAIL, self.live_defaults[CONF_LIVE_DETAIL])
+        self.live_timer: bool = entry.options.get(CONF_LIVE_TIMER, LIVE_DEFAULTS[CONF_LIVE_TIMER])
+        self.live_show: list[str] = list(entry.options.get(CONF_LIVE_SHOW, LIVE_DEFAULTS[CONF_LIVE_SHOW]))
+        # the state last shown on the Live Activity, so it's brought up to date as the appliance pauses and carries on
+        self.state_shown: str | None = None
         # the program last known, since an appliance may no longer report one by the time its end is told
         self.last_program: str = ""
         # the program of the cycle just over, kept for its reminders, since an appliance may by then have gone back
@@ -371,6 +374,13 @@ class ApplianceWatcher:
         # and what is to be written, None till anything has changed
         self._store: Store[dict[str, Any]] = Store(hass, CYCLE_STORE_VERSION, CYCLE_STORE.format(entry_id=entry.entry_id))
         self._restored: dict[str, Any] = {}
+        # minutes the appliance must be unavailable before it's told of as offline, none unless chosen, and since when
+        # it has been, and whether that's been told, to tell it's back
+        self.offline_after: float = float(entry.options.get(CONF_OFFLINE_AFTER) or 0)
+        self.offline_since: datetime | None = None
+        self.offline_told: bool = False
+        self._cancel_offline: CALLBACK_TYPE | None = None
+        self.offline_tag: str = f"{self.tag}_offline"
         self._kept: dict[str, Any] = {}
         self._written: dict[str, Any] | None = None
         # the integration the appliance comes through, and what it does, kept while that's yet to be tried
@@ -454,6 +464,9 @@ class ApplianceWatcher:
                     "last": _totals_kept(self.totals),
                 },
             }
+        if self.offline_since is not None:
+            # kept whether or not a cycle is, to tell it's back however long it's been
+            data["offline"] = {"since": _iso(self.offline_since), "told": self.offline_told}
         if data == self._kept:
             return
         self._kept = data
@@ -472,6 +485,86 @@ class ApplianceWatcher:
     @callback
     def async_start(self) -> None:
         raise NotImplementedError
+
+    def _health_entity_ids(self) -> list[str]:
+        """What says whether the appliance can be reached: its cycle state, through either integration"""
+        return [e for e in (self.cycle_entity_id, self.fallback_cycle_entity_id) if e]
+
+    @callback
+    def _unreachable(self) -> bool:
+        """Unavailable through every integration it's known by, as when it has lost its network or been switched
+        off at the wall"""
+        states = [state for e in self._health_entity_ids() if (state := self.hass.states.get(e)) is not None]
+        return bool(states) and all(state.state == STATE_UNAVAILABLE for state in states)
+
+    @callback
+    def async_watch_health(self) -> None:
+        """Tell when the appliance has been unavailable for longer than chosen, and when it's back, if chosen"""
+        kept: dict[str, Any] = self._restored.get("offline") or {}
+        if not self.offline_after or not (entity_ids := self._health_entity_ids()):
+            return
+        self.offline_since = _time(kept.get("since"))
+        self.offline_told = bool(kept.get("told"))
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, entity_ids, self._availability_changed))
+        self.entry.async_on_unload(self._stop_offline_wait)
+        self.entry.async_create_background_task(
+            self.hass, self._availability_now(Context()), f"{DOMAIN} availability {self.name}"
+        )
+
+    async def _availability_changed(self, event: Event[EventStateChangedData]) -> None:
+        await self._availability_now(event.context)
+
+    async def _availability_now(self, context: Context) -> None:
+        if self._unreachable():
+            if self.offline_since is None:
+                states = [state for e in self._health_entity_ids() if (state := self.hass.states.get(e)) is not None]
+                self.offline_since = max(state.last_changed for state in states)
+                self._save()
+            if not self.offline_told and self._cancel_offline is None:
+                due = self.offline_since + timedelta(minutes=self.offline_after)
+                self._cancel_offline = async_call_later(self.hass, _seconds_to(due), self._offline_due)
+            return
+        self._stop_offline_wait()
+        since, told = self.offline_since, self.offline_told
+        if since is None:
+            return
+        self.offline_since, self.offline_told = None, False
+        self._save()
+        if told:
+            took = format_duration(self.hass, dt_util.utcnow() - since)
+            await self._tell_health(self._texts[TEXT_ONLINE].format(name=self.name, duration=took), context)
+
+    async def _offline_due(self, now: datetime) -> None:
+        self._cancel_offline = None
+        if self.offline_told or self.offline_since is None or not self._unreachable():
+            return
+        self.offline_told = True
+        self._save()
+        since = format_time(self.offline_since)
+        await self._tell_health(self._texts[TEXT_OFFLINE].format(name=self.name, since=since), Context())
+
+    @callback
+    def _stop_offline_wait(self) -> None:
+        if self._cancel_offline is not None:
+            self._cancel_offline()
+            self._cancel_offline = None
+
+    async def _tell_health(self, message: str, context: Context) -> None:
+        """Offline, or back, with a tag of its own, so being back takes the place of being offline"""
+        title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
+        _LOGGER.info("APPLIANCES %s", message)
+        async with self._sending:
+            if supernotify_available(self.hass):
+                await self._supernotify(
+                    message,
+                    title,
+                    context,
+                    resend=True,
+                    extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.offline_tag},
+                    actions=self._tap_actions(),
+                )
+            else:
+                await self._send_message(message, title, context)
 
     @property
     def beta(self) -> bool:
@@ -557,7 +650,7 @@ class ApplianceWatcher:
 
     @callback
     def _cycle_forgotten(self) -> None:
-        """Not a cycle after all"""
+        """Not a cycle after all, or one over and summed up"""
         self.cycle_started = None
         self.cycle_stopped = None
         self._stop_unseen = False
@@ -570,11 +663,14 @@ class ApplianceWatcher:
             duration = None if self._stop_unseen else (self.cycle_stopped or dt_util.utcnow()) - started
             used = cost = None
             end = energy_reading(self.hass, self._energy_entity_id)
-            # nothing to tell if the meter was reset part way through
-            if self._energy_start is not None and end is not None and end >= self._energy_start:
+            if end is not None and counts_program(self.hass, self._energy_entity_id):
+                # what the program used, whatever it said as it began, which may have been the program before
+                used = end
+            elif self._energy_start is not None and end is not None and end >= self._energy_start:
+                # and nothing to tell if the meter was reset part way through
                 used = end - self._energy_start
-                if (price := await energy_price(self.hass)) is not None:
-                    cost = used * price
+            if used is not None and (price := await energy_price(self.hass)) is not None:
+                cost = used * price
             totals = CycleTotals(started, duration, used, cost)
         self.totals = totals
         self._cycle_forgotten()
@@ -638,7 +734,7 @@ class ApplianceWatcher:
             message = (
                 self._progress_message(progress)
                 if progress is not None
-                else self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE)
+                else self._text(CONF_START_MESSAGE, self._texts[TEXT_START])
             )
             if live and not ordinary:
                 # the bar already shows how far along it is, so there's room to say what it's doing
@@ -658,11 +754,11 @@ class ApplianceWatcher:
         async with self._sending:
             # resent, since to Supernotify a second cycle soon after the first is a repeat to be dropped
             await self._tell(
-                self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE),
+                self._text(CONF_START_MESSAGE, self._texts[TEXT_START]),
                 self.notify_start,
                 context,
                 resend=True,
-                spoken_message=self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE, speak=True),
+                spoken_message=self._text(CONF_START_MESSAGE, self._texts[TEXT_START], speak=True),
             )
             if supernotify_available(self.hass):
                 # whatever comes next waits its turn, the first progress being only moments behind the start
@@ -674,6 +770,7 @@ class ApplianceWatcher:
         """Notify of a cycle under way, either everywhere or with no more than its Live Activity brought up to date"""
         # a Live Activity keeps the title it started with
         title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
+        self.state_shown = self._state_shown()
         if not supernotify_available(self.hass):
             if ordinary:
                 await self._send_message(message, title, context)
@@ -705,31 +802,26 @@ class ApplianceWatcher:
             )
 
     def _live_title(self, title: str, message: str, timer: bool) -> tuple[str, str]:
-        """The title of a quiet Live Activity update as chosen, and its message, which needn't say the program again"""
-        if self.live_title == LIVE_TITLE_NAME:
+        """The title of a quiet Live Activity update, and its message. With a timer there's no message on the iOS Lock
+        Screen, so what's shown goes in the title, as much as there's room for, leaving out the program first and then
+        the phase, and the message has the progress in its place. With no timer the message has it all"""
+        if not timer:
             return title, message
-        if timer:
-            # with a timer there's no message on the iOS Lock Screen, so what it's doing goes in the title
-            phase = self._title_phase()
-        else:
-            # with no timer the message is seen, so the title has only the program, where the message doesn't say it
-            phase = self._title_program()
-            if phase and phase in message:
-                return title, message
-        if not phase or phase in title:
+        details = [detail for detail in self._details() if detail not in title]
+        while len(details) > 1 and len(LIVE_TITLE.format(title=title, phase=LIVE_SEPARATOR.join(details))) > LIVE_TITLE_ROOM:
+            details.pop(0)
+        if not details:
             return title, message
-        if message == phase and (progress := self._progress()) is not None:
+        if message == self._phase() and (progress := self._progress()) is not None:
             message = self._progress_message(progress)
-        if self.live_title == LIVE_TITLE_PROGRAM:
-            return phase, message
-        return LIVE_TITLE.format(title=title, phase=phase), message
+        return LIVE_TITLE.format(title=title, phase=LIVE_SEPARATOR.join(details)), message
 
     async def _ended(self, finished: bool, context: Context) -> None:
         self.last_program = self._program() or self.last_program
         self.program_kept = True
         await self._sum_up()
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
-        message = self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE)
+        message = self._text(CONF_END_MESSAGE, self._texts[TEXT_END])
         notify = finished and self.notify_end
         self._save()
         if self.trace is not None and self.trace.async_cycle_ended(finished):
@@ -854,13 +946,13 @@ class ApplianceWatcher:
         """The end, with buttons to say the appliance has been seen to, to be reminded later, or to switch it off"""
         title = self._text(CONF_END_TITLE, DEFAULT_TITLE)
         await self._supernotify(
-            self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
+            self._text(CONF_END_MESSAGE, self._texts[TEXT_END]),
             title,
             context,
             resend=resend,
             # a reminder is for whoever is to see to it, not for the whole house to hear again
             mobile_only=reminder,
-            spoken_message=self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE, speak=True, title=title),
+            spoken_message=self._text(CONF_END_MESSAGE, self._texts[TEXT_END], speak=True, title=title),
             actions=self._end_actions() + self._tap_actions(),
             extra_data={"notification_icon": self.icon, "mobile_push_notification_tag": self.end_tag},
             # what it came to, the once, a reminder being only to say it's still waiting
@@ -959,7 +1051,7 @@ class ApplianceWatcher:
             self._stop_reminding()
             self._save()
             await self._supernotify(
-                self._text(CONF_END_MESSAGE, DEFAULT_END_MESSAGE),
+                self._text(CONF_END_MESSAGE, self._texts[TEXT_END]),
                 self._text(CONF_END_TITLE, DEFAULT_TITLE),
                 event.context,
                 mobile_only=True,
@@ -978,6 +1070,11 @@ class ApplianceWatcher:
                 )
             except HomeAssistantError:
                 _LOGGER.exception("APPLIANCES Switching off %s failed", self.name)
+
+    @property
+    def _texts(self) -> Mapping[str, str]:
+        """The texts of notifications in the language of Home Assistant"""
+        return translated(self.hass, NOTIFICATION_TEXTS)
 
     def _text(self, key: str, default: str, speak: bool = False, title: str | None = None) -> str:
         """The text chosen for a notification, filled in, or as a voice assistant is to say it, after its title"""
@@ -1061,17 +1158,27 @@ class ApplianceWatcher:
         return self._timed_progress() if progress is None else int(progress)
 
     def _progress_message(self, progress: int) -> str:
-        return PROGRESS_MESSAGE.format(progress=progress)
+        return self._texts[TEXT_PROGRESS].format(progress=progress)
 
     def _phase(self) -> str | None:
-        """What the appliance is doing, to say alongside a bar that already shows how far along it is, as the Live
-        Activity is chosen to show it, or else whichever of its status and program it reports"""
-        program, stage = self._program(), self._stage()
-        if self.live_detail == LIVE_DETAIL_PROGRAM:
-            return program or stage
-        if self.live_detail == LIVE_DETAIL_PROGRAM_STATUS and program and stage and stage != program:
-            return LIVE_PROGRAM_STATUS.format(program=program, status=stage)
-        return stage or program
+        """What the appliance is doing, to say alongside a bar that already shows how far along it is"""
+        return LIVE_SEPARATOR.join(self._details()) or None
+
+    def _details(self) -> list[str]:
+        """Whichever of the program, the phase and the state are chosen to be shown and are reported, leaving out any
+        that says no more than one before it, as a vacuum's status of returning home does after its returning"""
+        shown: list[str] = []
+        for key, detail in (
+            (LIVE_SHOW_PROGRAM, self._program()),
+            (LIVE_SHOW_PHASE, self._stage()),
+            (LIVE_SHOW_STATE, self._state_shown()),
+        ):
+            if key not in self.live_show or not detail:
+                continue
+            if any(detail.casefold() in other.casefold() or other.casefold() in detail.casefold() for other in shown):
+                continue
+            shown.append(detail)
+        return shown
 
     def _stage(self) -> str | None:
         """What the appliance is doing within its cycle, where its integration tells, or what it last told while it
@@ -1082,14 +1189,30 @@ class ApplianceWatcher:
             return self._last_stage
         return self._last_stage if self.running else None
 
-    def _title_phase(self) -> str | None:
-        """What goes beside the name in the title of a Live Activity with a timer: the program, where the stage is
-        what the Live Activity says, or else whatever the Live Activity would say"""
-        return self._program() if self._stage() is not None else self._phase()
+    def _state_shown(self) -> str | None:
+        """The state of the cycle, where it says more than that it's running, such as paused"""
+        state = self._cycle_state()
+        value = self._cycle_value(state)
+        if state is None or value in STATES_RUN or value not in STATES_ACTIVE:
+            return None
+        return self._translated(state)
 
-    def _title_program(self) -> str | None:
-        """The program beside the name in the title of a Live Activity with no timer"""
-        return self._program()
+    async def _tell_state(self, context: Context) -> None:
+        """Bring the Live Activity up to date with the state, as it pauses or carries on, if it's shown"""
+        if LIVE_SHOW_STATE not in self.live_show or self._state_shown() == self.state_shown:
+            return
+        if not supernotify_available(self.hass):
+            return
+        async with self._sending:
+            if self.running:
+                # as a progress update would say it, so the state it no longer has isn't left showing
+                progress = self._progress()
+                message = self._phase() or (
+                    self._progress_message(progress)
+                    if progress is not None
+                    else self._text(CONF_START_MESSAGE, self._texts[TEXT_START])
+                )
+                await self._tell(message, False, context, resend=True)
 
     def _program_state(self) -> State | None:
         """The program under way, or failing that the one chosen, where the appliance reports either"""
@@ -1183,7 +1306,7 @@ class ApplianceWatcher:
             data["progress_max"] = 100
         # no counting down while paused, since the time left stands still
         self.shown_paused = self._paused()
-        finish_time = None if self.shown_paused or self.live_detail != LIVE_DETAIL_TIME else self._finish_time()
+        finish_time = None if self.shown_paused or not self.live_timer else self._finish_time()
         if finish_time is not None:
             data["chronometer"] = True
             data["when"] = int(finish_time.timestamp())
@@ -1213,7 +1336,7 @@ class ApplianceWatcher:
             message = self._phase() or (
                 self._progress_message(progress)
                 if progress is not None
-                else self._text(CONF_START_MESSAGE, DEFAULT_START_MESSAGE)
+                else self._text(CONF_START_MESSAGE, self._texts[TEXT_START])
             )
             await self._tell(message, False, context)
 
@@ -1464,8 +1587,9 @@ class HomeConnectWatcher(ApplianceWatcher):
             return None
         # a button on the oven for more of its elements to be used, which goes off by itself
         fast = self._state(FAST_PREHEAT_KEY)
-        phase = FAST_PREHEAT_PHASE if fast is not None and fast.state == STATE_ON else PREHEAT_PHASE
-        return PREHEAT_MESSAGE.format(
+        texts = self._texts
+        phase = texts[TEXT_FAST_PREHEAT] if fast is not None and fast.state == STATE_ON else texts[TEXT_PREHEAT]
+        return texts[TEXT_PREHEATING].format(
             phase=phase, current=f"{temperatures[0]:g}", target=f"{temperatures[1]:g}", unit=self._temperature_unit()
         )
 
@@ -1473,18 +1597,25 @@ class HomeConnectWatcher(ApplianceWatcher):
         cavity = self._state(CAVITY_TEMPERATURE_KEY)
         return cavity.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "°") if cavity is not None else "°"
 
-    def _phase(self) -> str | None:
-        if self._paused() and (cycle := self._cycle_state()) is not None:
-            return self._translated(cycle)
-        if message := self._preheat_message():
-            return message
-        program, current = super()._phase(), self._number(CAVITY_TEMPERATURE_KEY)
-        if (layer := self._layer_text()) is not None:
-            # what it's doing, and how far it's got with it
-            return f"{program} · {layer}" if program else layer[:1].upper() + layer[1:]
-        if program is None or current is None:
-            return program
-        return OVEN_MESSAGE.format(program=program, current=f"{current:g}", unit=self._temperature_unit())
+    def _stage(self) -> str | None:
+        """Warming up, as the phase, Home Connect reporting none of its own"""
+        return self._preheat_message() or super()._stage()
+
+    def _details(self) -> list[str]:
+        """With how hot it is once it's up to heat, after the last of what's shown"""
+        details, current = super()._details(), self._number(CAVITY_TEMPERATURE_KEY)
+        if self.appliance_type in PLATFORM_TYPES.values():
+            # a 3D printer, without its print, the name of a print often being that of its settings, and long, but with
+            # how far it's got
+            print_name = self._program()
+            details = [detail for detail in details if detail != print_name]
+            if (layer := self._layer_text()) is not None:
+                details.append(layer if details else layer[:1].upper() + layer[1:])
+            return details
+        if not details or current is None or self._preheat_message() is not None:
+            return details
+        details[-1] = OVEN_MESSAGE.format(program=details[-1], current=f"{current:g}", unit=self._temperature_unit())
+        return details
 
     def _progress_message(self, progress: int) -> str:
         if message := self._preheat_message():
@@ -1492,18 +1623,6 @@ class HomeConnectWatcher(ApplianceWatcher):
         if (layer := self._layer_text()) is not None:
             return layer[:1].upper() + layer[1:]
         return super()._progress_message(progress)
-
-    def _title_phase(self) -> str | None:
-        # a 3D printer is named alone, since the name of a print is often that of its settings, and long
-        if self.appliance_type in PLATFORM_TYPES.values():
-            return None
-        return super()._title_phase()
-
-    def _title_program(self) -> str | None:
-        # nor its print in place of a timer
-        if self.appliance_type in PLATFORM_TYPES.values():
-            return None
-        return super()._title_program()
 
     @property
     def has_filament(self) -> bool:
@@ -1798,7 +1917,7 @@ class HomeConnectWatcher(ApplianceWatcher):
         # back to the progress of the program, for an oven with a timer set
         progress = self._progress()
         self.last_progress_mark = -1 if progress is None else self._mark(progress)
-        message = PREHEATED_MESSAGE.replace(NAME_PLACEHOLDER, self.name)
+        message = self._texts[TEXT_PREHEATED].replace(NAME_PLACEHOLDER, self.name)
         title = self._text(CONF_START_TITLE, DEFAULT_TITLE)
         async with self._sending:
             if not self.running or not self.notify_phase:
@@ -1852,6 +1971,9 @@ class HomeConnectWatcher(ApplianceWatcher):
                 if self.shown_paused:
                     # going again, so counting down again
                     await self._live_refresh(context)
+                else:
+                    # carrying on, from waiting for something to be done perhaps
+                    await self._tell_state(context)
                 await self._problem_cleared(context)
                 return
             if self.starting:
@@ -1889,6 +2011,9 @@ class HomeConnectWatcher(ApplianceWatcher):
             await self._live_refresh(context)
             # stopped by a fault for someone to see to, unless it's only been paused
             await self._problem_check(context)
+        elif state in STATES_ACTIVE:
+            # waiting for something to be done, still the same cycle
+            await self._tell_state(context)
         elif state in STATES_SETTLING:
             if self._cancel_end is None:
                 self._end_at(dt_util.utcnow() + timedelta(seconds=CYCLE_SETTLE), self._settled, context)
@@ -2091,7 +2216,12 @@ class PowerWatcher(ApplianceWatcher):
             self._cancel_end()
             self._cancel_end = None
 
+    def _health_entity_ids(self) -> list[str]:
+        """Its power sensor, which goes unavailable with the smart plug"""
+        return [self.power_entity_id]
+
     def _totals_device_id(self) -> str | None:
+        """The smart plug's device, whose energy meter tells what a cycle used"""
         entity = er.async_get(self.hass).async_get(self.power_entity_id)
         return entity.device_id if entity is not None else None
 
@@ -2130,8 +2260,6 @@ class PowerWatcher(ApplianceWatcher):
 
 class VacuumWatcher(ApplianceWatcher):
     """A robot vacuum of any make, whose cleaning is the cycle, from setting off till it's back or stopped by itself"""
-
-    live_defaults = VACUUM_LIVE_DEFAULTS
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(hass, entry)
@@ -2296,6 +2424,14 @@ class VacuumWatcher(ApplianceWatcher):
 
     def _phase_data(self) -> dict[str, Any]:
         return {"waiting": self._pending, "complete": self._complete, "job": self._job, "set_off": _iso(self._set_off)}
+
+    def _state_shown(self) -> str | None:
+        """What it's doing other than cleaning, such as on its way back to its dock, which a vacuum with no status of
+        its own has no other way of saying"""
+        state = self._cycle_state()
+        if state is None or state.state not in (VACUUM_PAUSED, VACUUM_RETURNING):
+            return None
+        return self._translated(state)
 
     async def _status_changed(self, event: Event[EventStateChangedData]) -> None:
         """The vacuum moving on within its cleaning, such as from sweeping to relocating"""

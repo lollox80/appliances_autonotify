@@ -2,6 +2,31 @@
 title: What's New
 ---
 
+# 1.1.0
+## ✨ Enhancements
+- Notifications in the language of Home Assistant, with their usual wording, progress and pre-heating, as their buttons and maintenance messages already were, which was meant for 1.0.0 but left out of it
+  - In Italian too, so an Italian Home Assistant now says "Lavatrice: ciclo terminato" where it said "Lavatrice is finished", unless the message was changed in the settings
+- Live Activity shows any of the program, the phase and the state, ticked in the settings, all by default, each where the appliance reports it and has something to say
+  - The phase is the part of the cycle it's in, such as *Main wash*, *Drying* or an oven *Pre-heating*
+  - The state is shown when it's more than running, such as *Paused*, or a robot vacuum *Returning* to its dock, which is now said whether or not the vacuum has a status of its own
+  - With the timer, they go in the title beside the name as much as fits, leaving out the program first, then the phase
+  - Brought up to date as the appliance pauses and carries on
+  - *Live Activity timer* switch in place of choosing the time left in *Live Activity shows*
+- *Live Activity title* choice gone, taken over by what's ticked, with choices made before carried over
+- **Home Connect Local**
+ - Dishwashers supported, now seen through a whole cycle, so no longer offered as new (#28)
+   - Their program phase, such as *Main wash* or *Drying*, shown as the phase
+   - Its washers, dryers and other appliances still new, till one of each has been tried
+- How long a cycle ran, the energy it used and what it cost can be put in the end message, as `{duration}`, `{energy}` and `{cost}`, and when it started as `{start_time}` in the start and end messages (#35, thanks @lollox80)
+  - Energy from the appliance's or its smart plug's own energy meter, and cost at the grid price set on the Energy dashboard
+  - Each left out where it isn't known, along with a line left with nothing but its emoji
+  - Duration and cost written as in the language of Home Assistant, such as *1 Std. 40 Min.* in German, and *$0.45* or *0,45 €*
+- An appliance can be told of as offline once its integration can't reach it for longer than chosen, in *Notify offline after*, and as back when it can again
+  - None unless chosen, since an appliance switched off at the wall is offline too
+  - For one whose network connection has dropped, such as a dishwasher no longer on Wi-Fi, which otherwise goes quiet without a word
+## 📚 Documentation
+- *What a Cycle Came To* in README, with an example end message, and *Cycle Totals* in How it Works, on how each is worked out
+
 # 1.0.1
 ## 🐛 Fixes
 - Robot vacuum Live Activity no longer left at an old progress, such as 51%, all the way home, where its progress went unavailable with its cloud connection and came back at 100, as Roborock's can as it heads back

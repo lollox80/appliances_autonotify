@@ -49,6 +49,9 @@ class PlatformProfile:
     # what else an appliance must have for its cycle state to be one, for an integration that gives every device the
     # same cycle state, a fridge's as much as a washer's
     cycle_needs: tuple[str, ...] = ()
+    # energy sensors, by translation key, that count only the program under way, going back to nothing as the next
+    # one starts, so what one says at the end is what the cycle used, rather than how far it has gone up since it began
+    program_meter_keys: frozenset[str] = frozenset()
     # the types of appliance seen to work, for one in beta, its others still yet to be tried
     supported_types: frozenset[str] = frozenset()
     # where to tell of how it went, for one in beta
@@ -146,6 +149,8 @@ PROFILES: Final[dict[str, PlatformProfile]] = {
                 "sensor_remaining_program_time": REMAINING_TIME_KEY,
                 "sensor_active_program": "active_program",
                 "select_program": "selected_program",
+                # what a dishwasher is doing within its cycle, as Home Connect doesn't report it
+                "sensor_program_phase": STAGE_KEY,
             },
             program_types={
                 "laundrycare_washer_program_": "washer",
@@ -155,6 +160,8 @@ PROFILES: Final[dict[str, PlatformProfile]] = {
                 "consumerproducts_cleaningrobot_program_": "cleaning_robot",
                 "heatingventilationairconditioning_airconditioner_program_": "air_conditioner",
             },
+            # a dishwasher seen through a whole cycle, its washers, dryers and others yet to be
+            supported_types=frozenset({"dishwasher"}),
             issue_url="https://github.com/rhizomatics/appliance_autonotify/issues/28",
         ),
         # LG ThinQ, whose one state says both whether a washer, dryer or dishwasher is running and what it's doing,
@@ -211,6 +218,8 @@ PROFILES: Final[dict[str, PlatformProfile]] = {
                 "program_interrupted": "aborting",
             },
             cycle_needs=(STAGE_KEY,),
+            # what the program under way has used, which may still say what the one before did as the next starts
+            program_meter_keys=frozenset({"energy_consumption"}),
         ),
     )
     if profile.platform is not None

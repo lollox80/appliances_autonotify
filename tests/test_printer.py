@@ -148,18 +148,18 @@ async def test_print_is_a_cycle(hass: HomeAssistant) -> None:
     await set_state(hass, printer["stage"], "auto_bed_leveling")
     assert calls[2].data["message"] == "auto_bed_leveling"
 
-    # printing, the same cycle, the printer named alone even with a countdown
+    # printing, the same cycle, with what it's doing beside its name, but not its print, even with a countdown
     await set_state(hass, printer["print_status"], "running")
     assert len(calls) == 3
     await set_state(hass, printer["end_time"], "2026-10-15T12:30:00+00:00")
     assert len(calls) == 3
     await set_state(hass, printer["stage"], "printing")
-    assert calls[3].data["title"] == "A1"
-    assert calls[3].data["message"] == "printing"
+    assert calls[3].data["title"] == "A1 · printing"
+    assert calls[3].data["message"] == "0% complete"
     assert calls[3].data["extra_data"]["when"] == 1792067400
     await set_state(hass, printer["print_progress"], "5")
-    assert calls[4].data["title"] == "A1"
-    assert calls[4].data["message"] == "printing"
+    assert calls[4].data["title"] == "A1 · printing"
+    assert calls[4].data["message"] == "5% complete"
     assert calls[4].data["extra_data"]["progress"] == 5
 
     # away for a while, which changes nothing
@@ -248,7 +248,7 @@ async def test_pause_stops_the_countdown(hass: HomeAssistant, freezer) -> None:
 
     await set_state(hass, printer["print_status"], "pause")
     assert len(calls) == 1
-    assert calls[0].data["message"] == "pause"
+    assert calls[0].data["message"] == "printing · pause"
     assert calls[0].data["title"] == "A1"
     assert "when" not in calls[0].data["extra_data"]
     # the time left standing still tells nothing while paused
@@ -298,7 +298,7 @@ async def test_fault_asks_for_help_once(hass: HomeAssistant) -> None:
     await set_state(hass, printer["print_status"], "pause")
     assert len(calls) == 2
     # the Live Activity offers to carry on, and never to stop
-    assert paused(calls).data["message"] == "pause"
+    assert paused(calls).data["message"] == "printing · pause"
     assert buttons(paused(calls)) == ["Resume"]
     assert help_asked(calls).data == {
         "message": f"A1 needs help\n{NOZZLE}",
@@ -705,7 +705,7 @@ async def test_each_layer_shown_no_more_than_once_a_minute(hass: HomeAssistant, 
     await set_state(hass, printer["print_status"], "pause")
     freezer.tick(61)
     await set_state(hass, printer["current_layer"], "48")
-    assert calls[-1].data["message"] == "pause"
+    assert calls[-1].data["message"] == "printing · pause · layer 47/201"
 
 
 async def test_layers_not_listened_to_unless_chosen(hass: HomeAssistant) -> None:

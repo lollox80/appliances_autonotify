@@ -14,11 +14,27 @@ moved on or finished.
 | Every 2% of progress, from 90%         | Silent update of the Live Activity, on phones only                  | Nothing             |
 | Oven warming up                        | Silent update of the Live Activity as the oven warms, see below      | Nothing, or with *Notify progress* on, a notification |
 | Oven up to heat                        | "Oven is pre-heated" everywhere, unless *Notify phases* is off       | The same notification, unless *Notify phases* is off |
-| Cycle finishes                         | Live Activity closed, then an end notification everywhere, unless *Notify end* is off | End notification, unless *Notify end* is off |
+| Cycle finishes                         | Live Activity closed, then an end notification everywhere, unless *Notify end* is off, with what the cycle came to where the end message asks for it, see [Cycle Totals](#cycle-totals) | End notification, unless *Notify end* is off |
 | Cycle is aborted, or fails             | Live Activity closed, with no end notification                      | Nothing             |
 
 Pausing and resuming an appliance counts as the same cycle. An appliance that is switched off, like an oven,
 counts as finished.
+
+## Cycle Totals
+
+What a cycle came to, for `{start_time}`, `{duration}`, `{energy}` and `{cost}` in its messages:
+
+- **Start** is when the appliance said it had started, or for a power monitored one, when it first drew power, rather than once it had drawn it for long enough to count as a cycle
+- **Duration** is from then until it stopped, not until that was believed: a power monitored appliance's grace period, or a robot vacuum's wait on its dock, isn't counted
+- **Energy** is how far the device's energy meter went up over the cycle: the appliance's own, or for a power monitored appliance, its smart plug's. Of the device's energy sensors, one that adds up all it has used, with a state class of `total_increasing`, is taken first, ahead of one of only what was used since the last reading
+- **Cost** is that energy at the price of electricity from the grid set on the *Energy* dashboard, either a fixed number or an entity's state, per kWh, or per Wh or MWh where the entity's unit says so
+
+What they're worked out from is kept through a restart of Home Assistant, so a cycle carried on with is still summed up, and the reminders of one already over still say what it came to. Some things can't be known, and are left out of the message:
+
+- All of them, for a cycle already under way when Home Assistant started that hadn't been seen to start, such as when the appliance was first added
+- The energy and cost, for a cycle carried on from before an upgrade from a release before 1.1.0, which is timed from when it was said to start, with nothing metered
+- The duration, for a power monitored appliance that stopped while Home Assistant was off, there being no knowing when
+- The energy and cost, where the meter was reset part way through the cycle, or wasn't known as it started
 
 ## Appliances Through Other Integrations
 
@@ -45,11 +61,13 @@ Where an integration names its entities or states its own way, or has more to te
 
 | Integration | Appliances | Issue |
 | ----------- | ---------- | ----- |
-| [Home Connect Local](https://github.com/chris-mc1/homeconnect_local_hass) | Bosch, Siemens, Neff | [#28](https://github.com/rhizomatics/appliance_autonotify/issues/28) |
+| [Home Connect Local](https://github.com/chris-mc1/homeconnect_local_hass) | Bosch, Siemens, Neff washers, dryers and others (dishwashers supported) | [#28](https://github.com/rhizomatics/appliance_autonotify/issues/28) |
 | [LG ThinQ](https://www.home-assistant.io/integrations/lg_thinq/) | LG dishwashers (washers and dryers supported) | [#27](https://github.com/rhizomatics/appliance_autonotify/issues/27) |
 | [Miele](https://www.home-assistant.io/integrations/miele/) | Miele washers, dryers, dishwashers, ovens | [Issues](https://github.com/rhizomatics/appliance_autonotify/issues) |
 
-LG ThinQ has one state for both whether the appliance is running and what it's doing, such as *Rinsing*, which is shown as its status, and reports no progress, so it's worked out from the time the cycle takes and the time left, and moved on each minute.
+LG ThinQ has one state for both whether the appliance is running and what it's doing, such as *Rinsing*, which is shown as its phase, and reports no progress, so it's worked out from the time the cycle takes and the time left, and moved on each minute.
+
+Home Connect Local reports a dishwasher's program phase, such as *Main wash*, which is shown as its phase, where Home Connect reports none.
 
 Miele gives every appliance the same status, a fridge's as much as a washer's, so only one with a program phase too is taken to have a cycle. Its progress is worked out from the time the program has taken and the time it has left.
 

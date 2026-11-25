@@ -64,9 +64,10 @@
                     "notify_end": "Notifica la fine",
                     "notify_phase": "Notifica le fasi",
                     "notify_progress": "Notifica l'avanzamento",
+                    "offline_after": "Notifica offline dopo",
                     "dashboard": "Dashboard da aprire",
-                    "live_title": "Titolo della Live Activity",
-                    "live_detail": "La Live Activity mostra",
+                    "live_timer": "Timer della Live Activity",
+                    "live_show": "La Live Activity mostra",
                     "maintenance": "Segui la manutenzione",
                     "notify_problem": "Notifica i guasti",
                     "snapshot": "Foto dalla sua telecamera",
@@ -78,8 +79,9 @@
                     "notify_phase": "Invia una notifica quando finisce una fase del ciclo, ad esempio quando il forno è arrivato in temperatura. Se disattivato, viene mostrata solo sulla Live Activity.",
                     "dashboard": "Aperta quando si tocca una notifica o la Live Activity. Lascia vuoto per aprire l'app dove si trovava. Impostata su una dashboard con il nome dell'elettrodomestico o del suo tipo, ad esempio \"Lavastoviglie\" o \"Lavatrice\", se ce n'era una quando l'elettrodomestico è stato aggiunto.",
                     "notify_progress": "Invia una notifica ogni 10% del ciclo. Se disattivato, l'avanzamento compare solo nella barra della Live Activity, aggiornata senza suono.",
-                    "live_title": "Il titolo della Live Activity. Il programma accanto al nome è utile quando il tempo residuo prende il posto del messaggio, come nella schermata di blocco dell'iPhone. Scegli solo il nome se i nomi dei programmi sono troppo lunghi, o se l'elettrodomestico usa sempre lo stesso programma.",
-                    "live_detail": "Mostra il tempo residuo, se l'elettrodomestico indica quando finirà, oppure al suo posto il programma, lo stato, cioè cosa sta facendo nel ciclo, come l'asciugatura o un robot aspirapolvere che si riposiziona, o entrambi. Il programma può essere l'intero ciclo o una sua fase, come un prelavaggio, e per un robot aspirapolvere è la modalità di pulizia. Ciò che l'elettrodomestico non indica viene omesso.",
+                    "offline_after": "Minuti in cui l'elettrodomestico deve restare non disponibile, ad esempio quando la sua integrazione non lo raggiunge in rete, prima che una notifica dica che è offline, e un'altra quando torna. 0 per nessuna, l'impostazione abituale, perché anche un elettrodomestico spento dalla presa è offline.",
+                    "live_timer": "Mostra il conto alla rovescia del tempo rimanente sulla Live Activity, se l'elettrodomestico indica quando finirà. Sulla schermata di blocco dell'iPhone il timer prende il posto del messaggio, quindi ciò che è mostrato sotto va nel titolo, per quanto ci sta accanto al nome.",
+                    "live_show": "Cosa sta facendo l'elettrodomestico, ciascuno se lo indica e ha qualcosa da dire. Il programma, come Eco 50ºC, si può togliere per un elettrodomestico che usa sempre lo stesso. La fase è la parte del ciclo in corso, come un prelavaggio, l'asciugatura o un robot aspirapolvere che si riposiziona. Lo stato è mostrato solo quando dice più che in funzione, come in pausa o in rientro alla base. Se nel titolo non c'è spazio per tutti, il programma viene tolto per primo.",
                     "maintenance": "Conta i cicli, e quanta vita resta alle parti di cui l'apparecchio la riporta, e mette ciò che va fatto nella lista Manutenzione elettrodomestici, con una notifica quando scade. Se è spento viene proposto una volta sulla notifica di fine.",
                     "notify_problem": "Invia una notifica quando un guasto ferma l'elettrodomestico, dicendo qual è: in pausa a metà, in attesa che qualcuno intervenga, oppure fermo del tutto. Una pausa fatta a mano non è un guasto.",
                     "snapshot": "Invia una foto dalla telecamera dell'elettrodomestico con la fine e con un guasto.",
@@ -88,7 +90,7 @@
                 "sections": {
                     "start": {
                         "name": "Messaggio di inizio",
-                        "description": "Inviato quando l'elettrodomestico parte. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma in corso. {start_time_placeholder} diventa l'ora di avvio, per esempio 11:29.",
+                        "description": "Inviato quando l'elettrodomestico parte. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma in corso. {start_time_placeholder} viene sostituito dall'ora di partenza, ad esempio 11:29.",
                         "data": {
                             "start_title": "Titolo",
                             "start_message": "Messaggio"
@@ -96,7 +98,7 @@
                     },
                     "end": {
                         "name": "Messaggio di fine",
-                        "description": "Inviato quando l'elettrodomestico finisce. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma eseguito. {totals_placeholders} diventano la durata del ciclo, l'energia consumata, se ha un misuratore di energia, e quanto è costata, se nella dashboard Energia è impostato un prezzo.",
+                        "description": "Inviato quando l'elettrodomestico finisce. Svuota un campo per tornare al testo predefinito. Scrivi {program_placeholder} dove va indicato il programma eseguito. {start_time_placeholder} viene sostituito dall'ora di partenza e {totals_placeholders} dalla durata, dall'energia consumata, se c'è un contatore di energia, e dal costo, se nella dashboard Energia è impostato un prezzo. Una riga senza nulla da indicare viene tolta.",
                         "data": {
                             "end_title": "Titolo",
                             "end_message": "Messaggio",
@@ -181,19 +183,11 @@
                 "kettle": "bollitore"
             }
         },
-        "live_title": {
+        "live_show": {
             "options": {
-                "name_program": "Nome dell'elettrodomestico e programma",
-                "program": "Solo il programma",
-                "name": "Solo il nome dell'elettrodomestico"
-            }
-        },
-        "live_detail": {
-            "options": {
-                "time_remaining": "Tempo residuo",
                 "program": "Programma",
-                "status": "Stato",
-                "program_status": "Programma e stato"
+                "phase": "Fase",
+                "state": "Stato"
             }
         },
         "live_count": {

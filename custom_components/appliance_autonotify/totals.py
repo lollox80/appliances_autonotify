@@ -15,6 +15,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
+from .const import DURATION_FORMATS, DURATION_HOURS, DURATION_HOURS_MINUTES, DURATION_MINUTES
+from .platforms import profile_for
+
 if TYPE_CHECKING:
     from datetime import datetime, timedelta
 
@@ -26,11 +29,25 @@ ENERGY_DOMAIN = "energy"
 # state classes of a meter that only goes up, best first
 METER_STATE_CLASSES: tuple[str, ...] = ("total_increasing", "total")
 # symbols of the commonest currencies, any other being shown by its code
-CURRENCY_SYMBOLS: dict[str, str] = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF", "JPY": "¥"}
+CURRENCY_SYMBOLS: dict[str, str] = {
+    "EUR": "€",
+    "USD": "$",
+    "GBP": "£",
+    "CHF": "CHF",
+    "JPY": "¥",
+    "CNY": "¥",
+    "INR": "₹",
+    "PLN": "zł",
+}
+
+
+# languages that write the currency before the amount, such as $0.45, all others writing it after, as 0,45 €, with a
+# space between where it's written in letters, such as CHF 0.45, and always in Dutch
+SYMBOL_BEFORE_LANGUAGES: frozenset[str] = frozenset({"en", "zh", "hi", "ja", "ko", "nl"})
 
 
 # languages that write a decimal point, all others writing a decimal comma
-DECIMAL_POINT_LANGUAGES: frozenset[str] = frozenset({"en", "ja", "zh", "ko", "th", "he", "ga", "mt"})
+DECIMAL_POINT_LANGUAGES: frozenset[str] = frozenset({"en", "ja", "zh", "ko", "th", "he", "hi", "ga", "mt"})
 # characters spoken as a pause rather than read out
 SPOKEN_PAUSES: str = "·•|/"
 
@@ -71,11 +88,12 @@ def format_time(when: datetime) -> str:
 
 
 def format_duration(hass: HomeAssistant, duration: timedelta) -> str:
-    """As short as a notification wants it, such as 50 min or 1 h 40 min"""
+    """As short as a notification wants it, such as 50 min or 1 h 40 min, in the language of Home Assistant"""
     hours, minutes = divmod(max(round(duration.total_seconds() / 60), 1), 60)
+    formats = DURATION_FORMATS.get(_language(hass), DURATION_FORMATS["en"])
     if not hours:
-        return f"{minutes} min"
-    return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+        return formats[DURATION_MINUTES].format(minutes=minutes)
+    return formats[DURATION_HOURS_MINUTES if minutes else DURATION_HOURS].format(hours=hours, minutes=minutes)
 
 
 def format_energy(hass: HomeAssistant, kwh: float) -> str:
@@ -84,7 +102,11 @@ def format_energy(hass: HomeAssistant, kwh: float) -> str:
 
 def format_cost(hass: HomeAssistant, cost: float) -> str:
     currency = hass.config.currency
-    return f"{_number(hass, cost)} {CURRENCY_SYMBOLS.get(currency, currency)}"
+    symbol, amount = CURRENCY_SYMBOLS.get(currency, currency), _number(hass, cost)
+    language = _language(hass)
+    if language not in SYMBOL_BEFORE_LANGUAGES:
+        return f"{amount} {symbol}"
+    return f"{symbol} {amount}" if symbol.isalpha() or language == "nl" else f"{symbol}{amount}"
 
 
 def _plural(count: int, one: str, many: str) -> str:
@@ -162,8 +184,17 @@ def energy_entity_id(hass: HomeAssistant, device_id: str | None) -> str | None:
         state_class = (state.attributes.get(ATTR_STATE_CLASS) if state else None) or (entry.capabilities or {}).get(
             ATTR_STATE_CLASS
         )
-        found.append((METER_STATE_CLASSES.index(state_class) if state_class in METER_STATE_CLASSES else 2, entry.entity_id))
+        # only one that adds up, since what another says at the end less what it said at the start means nothing
+        if state_class in METER_STATE_CLASSES:
+            found.append((METER_STATE_CLASSES.index(state_class), entry.entity_id))
     return min(found)[1] if found else None
+
+
+def counts_program(hass: HomeAssistant, entity_id: str | None) -> bool:
+    """Whether the energy sensor counts only the program under way, as Miele's does, rather than adding up all the
+    energy the device has ever used"""
+    entry = er.async_get(hass).async_get(entity_id) if entity_id else None
+    return entry is not None and entry.translation_key in profile_for(entry.platform).program_meter_keys
 
 
 def energy_reading(hass: HomeAssistant, entity_id: str | None) -> float | None:
